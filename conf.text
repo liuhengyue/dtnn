@@ -1,0 +1,33 @@
+[data]
+train_data_dir  = /Users/henry/Desktop/LatentAI/CPM_Pytorch/dataset/CMUHand/hand_labels/train/crop
+train_label_dir = /Users/henry/Desktop/LatentAI/CPM_Pytorch/dataset/CMUHand/hand_labels/train/crop_label
+save_dir        = ckpt/
+
+test_data_dir  = /Users/henry/Desktop/LatentAI/CPM_Pytorch/dataset/CMUHand/hand_labels/test/crop
+test_label_dir = /Users/henry/Desktop/LatentAI/CPM_Pytorch/dataset/CMUHand/hand_labels/test/crop_label
+
+
+[training]
+learning_rate   = 8e-6
+batch_size      = 1
+epochs          = 50
+begin_epoch     = 0
+
+
+[test]
+best_model       =30
+predict_label_dir = save/test_label
+predict_labels_dir = save/test_labels
+pck_save_dir    = save/test_pck.csv
+
+
+[predict]
+best_model       =30
+predict_data_dir = /home/haoyum/Tdata/crop_img
+predict_label_dir = /home/haoyum/Tdata/predict_label
+predict_labels_dir = /home/haoyum/Tdata/predict_labels
+
+
+
+
+

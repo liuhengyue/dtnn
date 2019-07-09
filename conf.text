@@ -1,10 +1,10 @@
 [data]
-train_data_dir  = /Users/henry/Desktop/LatentAI/CPM_Pytorch/dataset/CMUHand/hand_labels/train/crop
-train_label_dir = /Users/henry/Desktop/LatentAI/CPM_Pytorch/dataset/CMUHand/hand_labels/train/crop_label
+train_data_dir  = /Users/henry/Desktop/LatentAI/cpm-lstm-pytorch/dataset/CMUHand/hand_labels/train/crop
+train_label_dir = /Users/henry/Desktop/LatentAI/cpm-lstm-pytorch/dataset/CMUHand/hand_labels/train/crop_label
 save_dir        = ckpt/
 
-test_data_dir  = /Users/henry/Desktop/LatentAI/CPM_Pytorch/dataset/CMUHand/hand_labels/test/crop
-test_label_dir = /Users/henry/Desktop/LatentAI/CPM_Pytorch/dataset/CMUHand/hand_labels/test/crop_label
+test_data_dir  = /Users/henry/Desktop/LatentAI/cpm-lstm-pytorch/dataset/CMUHand/hand_labels/test/crop
+test_label_dir = /Users/henry/Desktop/LatentAI/cpm-lstm-pytorch/dataset/CMUHand/hand_labels/test/crop_label
 
 
 [training]

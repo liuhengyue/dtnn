@@ -1,4 +1,8 @@
 .DS_Store
 ckpt/
-dataset/
+dataset/CMUHand/data
+dataset/CMUHand/label
+dataset/CMUHand/hand_labels
+dataset/UCIHand/
 conf.text
+*.zip

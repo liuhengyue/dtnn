@@ -40,8 +40,10 @@ from src.util import *
 
 class CMUHand(Dataset):
 
-    def __init__(self, data_dir, label_dir, joints=21,  sigma=1):
+    def __init__(self, data_dir, label_dir, joints=21,  sigma=1, mode="train"):
         super(CMUHand, self).__init__()
+        assert mode in ["train", "test"], "wrong mode for the dataset"
+        self.mode = mode
 
         self.height = 368
         self.width = 368
@@ -80,12 +82,8 @@ class CMUHand(Dataset):
         center_map      3D Tensor      1                *   height(368)      *   weight(368)
         """
 
-        label_size = self.width // 8 - 1         # 45
-        img = self.images_dir[idx]              # '.../001L0/L0005.jpg'
-        label_path = os.path.join(self.label_dir, img.split('/')[-1][:-4] + '.json')
-        labels = json.load(open(label_path))
-
         # get image
+        img = self.images_dir[idx]              # '.../001L0/L0005.jpg'
         im = Image.open(img)                # read image
         w, h, c = np.asarray(im).shape      # weight 256 * height 256 * 3
         ratio_x = self.width / float(w)
@@ -93,17 +91,26 @@ class CMUHand(Dataset):
         im = im.resize((self.width, self.height))                       # unit8      weight 368 * height 368 * 3
         image = transforms.ToTensor()(im)   # 3D Tensor  3 * height 368 * weight 368
 
-        # get label map
-        label = labels['hand_pts_crop']         # 0005  list       21 * 2
-        lbl = self.genLabelMap(label, label_size=label_size, joints=self.joints, ratio_x=ratio_x, ratio_y=ratio_y)
-        label_maps = torch.from_numpy(lbl)
-
         # generate the Gaussian heat map
         center_map = self.genCenterMap(x=self.width / 2.0, y=self.height / 2.0, sigma=21,
                                        size_w=self.width, size_h=self.height)
         center_map = torch.from_numpy(center_map)
+        # get label map
+        if self.mode == "train":
+            label_size = self.width // 8 - 1         # 45
+            
+            label_path = os.path.join(self.label_dir, img.split('/')[-1][:-4] + '.json')
+            labels = json.load(open(label_path))
 
-        return image.float(), label_maps.float(), center_map.float(), img
+            label = labels['hand_pts_crop']         # 0005  list       21 * 2
+            lbl = self.genLabelMap(label, label_size=label_size, joints=self.joints, ratio_x=ratio_x, ratio_y=ratio_y)
+            label_maps = torch.from_numpy(lbl)
+
+            return image.float(), label_maps.float(), center_map.float(), img
+
+        
+        # else return without labels
+        return image.float(), center_map.float(), img
 
     def genCenterMap(self, x, y, sigma, size_w, size_h):
         """

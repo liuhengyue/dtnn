@@ -4,10 +4,11 @@ step 1: predict label and save into json file for every image
 
 """
 
-from data_loader.uci_hand_data import UCIHandPoseDataset as Mydata
+# from data_loader.uci_hand_data import UCIHandPoseDataset as Mydata
+from data_loader.cmu_hand_data import CMUHand as Mydata
 from model.cpm import CPM
 
-import ConfigParser
+import configparser
 import numpy as np
 import os
 import json
@@ -23,7 +24,7 @@ from torch.utils.data import DataLoader
 
 device_ids = [0, 1, 2, 3]        # multi-GPU
 
-config = ConfigParser.ConfigParser()
+config = configparser.ConfigParser()
 config.read('conf.text')
 
 batch_size = config.getint('training', 'batch_size')
@@ -37,7 +38,7 @@ predict_label_dir = config.get('predict', 'predict_label_dir')
 predict_labels_dir = config.get('predict', 'predict_labels_dir')
 
 
-heatmap_dir = '/home/haoyum/Tdata/heat_maps/'
+heatmap_dir = 'ckpt/'
 cuda = torch.cuda.is_available()
 
 sigma = 0.04
@@ -151,8 +152,8 @@ def Tests_save_label(predict_heatmaps, step, imgs):
 
 
 # ************************************ Build dataset ************************************
-test_data = Mydata(data_dir=predict_data_dir)
-print 'Test dataset total number of images is ----' + str(len(test_data))
+test_data = Mydata(data_dir=predict_data_dir, label_dir=None, mode="test")
+print('Test dataset total number of images is ----' + str(len(test_data)))
 
 # Data Loader
 test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=True)
@@ -171,7 +172,7 @@ net.load_state_dict(state_dict)
 
 # **************************************** test all images ****************************************
 
-print '********* test data *********'
+print('********* test data *********')
 net.eval()
 
 for step, (image, center_map, imgs) in enumerate(test_dataset):
@@ -191,7 +192,7 @@ for step, (image, center_map, imgs) in enumerate(test_dataset):
     for b in range(image_cpu.shape[0]):
         img = image_cpu[b, :, :, :]         # 3D Tensor
         img = transforms.ToPILImage()(img.data)        # PIL Image
-        pred = np.asarray(pred_6[b, 5, :, :, :])      # 3D Numpy
+        pred = pred_6[b, 5, :, :, :].detach().numpy()      # 3D Numpy
 
         seq = imgs[b].split('/')[-2]  # sequence name 001L0
         im = imgs[b].split('/')[-1][1:5]  # image name 0005
@@ -203,14 +204,14 @@ for step, (image, center_map, imgs) in enumerate(test_dataset):
 
 # ****************** merge label json file ******************
 
-print 'merge json file ............ '
+print('merge json file ............ ')
 
 seqs = os.listdir(predict_label_dir)
 
 for seq in seqs:
     if seq == '.DS_Store':
         continue
-    print seq
+    print(seq)
 
     s = os.path.join(predict_label_dir, seq)
     steps = os.listdir(s)
@@ -223,4 +224,4 @@ for seq in seqs:
 
 os.system('rm -r '+predict_label_dir)
 
-print 'build video ......'
+print('build video ......')

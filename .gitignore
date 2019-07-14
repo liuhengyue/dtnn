@@ -1,8 +1,16 @@
 .DS_Store
+__pycache__
 ckpt/
+models/
 dataset/CMUHand/data
 dataset/CMUHand/label
 dataset/CMUHand/hand_labels
 dataset/UCIHand/
+dataset/20bn-jester
+dataset/UCF-101
+dataset/ucf101
+dataset/ucf101
+dataset/UCF101.rar
+dataset/20bn-jester-preprocessed
 conf.text
 *.zip

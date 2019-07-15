@@ -11,13 +11,16 @@ from network.cpm import CPM
 import configparser
 import numpy as np
 import os
+import math
 import json
+from collections import OrderedDict
 
 
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
+import cv2
 
 
 # *********************** hyper parameter  ***********************
@@ -115,6 +118,48 @@ def heatmap_image(img, label,save_dir='/home/haoyum/Tdata/heat_maps/'):
     target.save(save_dir)
     os.system('rm tmp.jpg')
 
+def get_kpts(map_6, img_h = 368.0, img_w = 368.0):
+
+    # map_6 (21,45,45)
+    print(map_6.shape)
+    kpts = []
+    for m in map_6[1:]:
+        h, w = np.unravel_index(m.argmax(), m.shape)
+        x = int(w * img_w / m.shape[1])
+        y = int(h * img_h / m.shape[0])
+        kpts.append([x,y])
+    return kpts
+
+def draw_paint(im, kpts):
+
+    colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0], \
+              [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255]]
+    limbSeq = [[13, 12], [12, 9], [12, 8], [9, 10], [8, 7], [10, 11], [7, 6], [12, 3], [12, 2], [2, 1], [1, 0], [3, 4],
+               [4, 5]]
+
+    # draw points
+    for k in kpts:
+        x = k[0]
+        y = k[1]
+        cv2.circle(im, (x, y), radius=1, thickness=-1, color=(0, 0, 255))
+
+    # draw lines
+    for i in range(len(limbSeq)):
+        cur_im = im.copy()
+        limb = limbSeq[i]
+        [Y0, X0] = kpts[limb[0]]
+        [Y1, X1] = kpts[limb[1]]
+        mX = np.mean([X0, X1])
+        mY = np.mean([Y0, Y1])
+        length = ((X0 - X1) ** 2 + (Y0 - Y1) ** 2) ** 0.5
+        angle = math.degrees(math.atan2(X0 - X1, Y0 - Y1))
+        polygon = cv2.ellipse2Poly((int(mY), int(mX)), (int(length / 2), 4), int(angle), 0, 360, 1)
+        cv2.fillConvexPoly(cur_im, polygon, colors[i])
+        im = cv2.addWeighted(im, 0.4, cur_im, 0.6, 0)
+
+    cv2.imshow('test_example', im)
+    cv2.waitKey(0)
+    cv2.imwrite('test_example.png', im)
 
 def Tests_save_label(predict_heatmaps, step, imgs):
     """
@@ -166,8 +211,17 @@ if cuda:
     net = nn.DataParallel(net, device_ids=device_ids)  # multi-Gpu
 
 model_path = os.path.join('ckpt/model_epoch' + str(best_model)+'.pth')
-state_dict = torch.load(model_path)
-net.load_state_dict(state_dict)
+state_dict = torch.load(model_path, map_location=lambda storage, loc: storage)
+if cuda:
+    net.load_state_dict(state_dict)
+else:
+    # trained with DataParallel but test on cpu
+    single_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k.replace("module.", "") # remove `module.`
+        single_state_dict[name] = v
+    # load params
+    net.load_state_dict(single_state_dict)
 
 
 # **************************************** test all images ****************************************
@@ -200,28 +254,44 @@ for step, (image, center_map, imgs) in enumerate(test_dataset):
             os.mkdir(heatmap_dir+seq)
         img_dir = heatmap_dir + seq + '/' + im + '.jpg'
         heatmap_image(img, pred, save_dir=img_dir)
+        # ****************** draw keypoints on image ******************
+        kpts = get_kpts(pred)
+        img_copy = image_cpu[b, :, :, :].permute(1, 2, 0).numpy()
+        img_copy = img_copy[:, :, ::-1]
+        # print(img_copy.shape)
+        # img_copy = np.transpose(img_copy)
+        print(img_copy.shape)
+        print(kpts)
+        draw_paint(img_copy, kpts)
+        break
+
+    break
+
+
+
+
 
 
 # ****************** merge label json file ******************
 
-print('merge json file ............ ')
+# print('merge json file ............ ')
 
-seqs = os.listdir(predict_label_dir)
+# seqs = os.listdir(predict_label_dir)
 
-for seq in seqs:
-    if seq == '.DS_Store':
-        continue
-    print(seq)
+# for seq in seqs:
+#     if seq == '.DS_Store':
+#         continue
+#     print(seq)
 
-    s = os.path.join(predict_label_dir, seq)
-    steps = os.listdir(s)
-    d = {}
-    for step in steps:
-        lbl = json.load(open(s + '/' + step))
-        d = dict(d.items() + lbl.items())
+#     s = os.path.join(predict_label_dir, seq)
+#     steps = os.listdir(s)
+#     d = {}
+#     for step in steps:
+#         lbl = json.load(open(s + '/' + step))
+#         d = dict(d.items() + lbl.items())
 
-    json.dump(d, open(predict_labels_dir + '/' + seq + '.json', 'w'), sort_keys=True, indent=4)
+#     json.dump(d, open(predict_labels_dir + '/' + seq + '.json', 'w'), sort_keys=True, indent=4)
 
-os.system('rm -r '+predict_label_dir)
+# os.system('rm -r '+predict_label_dir)
 
-print('build video ......')
+# print('build video ......')

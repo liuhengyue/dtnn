@@ -1,6 +1,6 @@
 # test
-from data_loader.uci_hand_data import UCIHandPoseDataset
-from model.cpm import CPM
+from dataloaders.cmu_hand_data import CMUHand
+from network.cpm import CPM
 from src.util import *
 
 import numpy as np
@@ -8,7 +8,7 @@ import pandas as pd
 import os
 import torch
 import torch.nn as nn
-import ConfigParser
+import configparser
 
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -17,9 +17,9 @@ from torch.utils.data import DataLoader
 # *********************** hyper parameter  ***********************
 
 # multi-GPU
-device_ids = [0, 1, 2, 3]
+device_ids = [0, 1]
 
-config = ConfigParser.ConfigParser()
+config = configparser.ConfigParser()
 config.read('conf.text')
 test_data_dir = config.get('data', 'test_data_dir')
 test_label_dir = config.get('data', 'test_label_dir')
@@ -52,8 +52,8 @@ def cpm_evaluation(label_map, predict_heatmaps, sigma=0.04):
 
 
 # *************** Build dataset ***************
-train_data = UCIHandPoseDataset(data_dir=test_data_dir, label_dir=test_label_dir)
-print 'Test dataset total number of images sequence is ----' + str(len(train_data))
+train_data = CMUHand(data_dir=test_data_dir, label_dir=test_label_dir)
+print('Test dataset total number of images sequence is ----' + str(len(train_data)))
 
 # Data Loader
 test_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
@@ -66,8 +66,8 @@ def load_model(model):
     # build model
     net = CPM(out_c=21)
     if torch.cuda.is_available():
-        net = net.cuda()
-        net = nn.DataParallel(net)  # multi-Gpu
+        net = net.cuda(device_ids[0])
+        net = nn.DataParallel(net, device_ids=device_ids)  # multi-Gpu
 
     save_path = os.path.join('ckpt/model_epoch' + str(model)+'.pth')
     state_dict = torch.load(save_path)
@@ -78,7 +78,7 @@ def load_model(model):
 # **************************************** test all images ****************************************
 
 
-print '********* test data *********'
+print('********* test data *********')
 
 for model in model_epo:
 
@@ -91,7 +91,7 @@ for model in model_epo:
         pck_dict[sigma] = []
         sigma += 0.01
 
-    print 'model epoch ..' + str(model)
+    print('model epoch ..' + str(model))
     for step, (image, label_map, center_map, imgs) in enumerate(test_dataset):
         image = Variable(image.cuda() if cuda else image)  # 4D Tensor
         # Batch_size  *  3  *  width(368)  *  height(368)
@@ -111,23 +111,23 @@ for model in model_epo:
         for i in range(10):
 
             # calculate pck
-            pck = cpm_evaluation(label_map[:, 5, :, :, :], pred_6[:, 5, :, :, :], sigma=sigma)
+            pck = cpm_evaluation(label_map[:, 5, :, :, :].cpu(), pred_6[:, 5, :, :, :].cpu(), sigma=sigma)
             pck_dict[sigma].append(pck)
 
             if step % 100 == 0:
-                print '--step %d ...... sigma %f ...... pck %f' % (step, sigma, pck)
+                print('--step %d ...... sigma %f ...... pck %f' % (step, sigma, pck))
             sigma += 0.01
 
-    print 'Model epoch %d  finished  ==============================>' % (model)
+    print('Model epoch %d  finished  ==============================>' % (model))
 
     sigma = 0.01
     results = []
     for i in range(10):
         result = []
         result.append(sigma)
-        print 'sigma ==========> ' + str(sigma)
+        print('sigma ==========> ' + str(sigma))
         pck = sum(pck_dict[sigma]) / len(pck_dict[sigma]) * 1.0
-        print 'PCK   ==========> ' + str(pck)
+        print('PCK   ==========> ' + str(pck))
         result.append(pck)
         results.append(result)
         sigma += 0.01

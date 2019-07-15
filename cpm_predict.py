@@ -5,8 +5,8 @@ step 1: predict label and save into json file for every image
 """
 
 # from data_loader.uci_hand_data import UCIHandPoseDataset as Mydata
-from data_loader.cmu_hand_data import CMUHand as Mydata
-from model.cpm import CPM
+from dataloaders.cmu_hand_data import CMUHand as Mydata
+from network.cpm import CPM
 
 import configparser
 import numpy as np
@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 
 # *********************** hyper parameter  ***********************
 
-device_ids = [0, 1, 2, 3]        # multi-GPU
+device_ids = [0, 1]        # multi-GPU
 
 config = configparser.ConfigParser()
 config.read('conf.text')
@@ -162,7 +162,7 @@ test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=True)
 # Build model
 net = CPM(21)
 if cuda:
-    net = net.cuda()
+    net = net.cuda(device_ids[0])
     net = nn.DataParallel(net, device_ids=device_ids)  # multi-Gpu
 
 model_path = os.path.join('ckpt/model_epoch' + str(best_model)+'.pth')
@@ -185,14 +185,14 @@ for step, (image, center_map, imgs) in enumerate(test_dataset):
     pred_6 = net(image, center_map)  # 5D tensor:  batch size * stages(6) * 41 * 45 * 45
 
     # ****************** from heatmap to label ******************
-    Tests_save_label(pred_6[:, 5, :, :, :], step, imgs=imgs)
+    Tests_save_label(pred_6[:, 5, :, :, :].cpu(), step, imgs=imgs)
 
 
     # ****************** draw heat maps ******************
     for b in range(image_cpu.shape[0]):
         img = image_cpu[b, :, :, :]         # 3D Tensor
         img = transforms.ToPILImage()(img.data)        # PIL Image
-        pred = pred_6[b, 5, :, :, :].detach().numpy()      # 3D Numpy
+        pred = pred_6[b, 5, :, :, :].cpu().detach().numpy()     # 3D Numpy
 
         seq = imgs[b].split('/')[-2]  # sequence name 001L0
         im = imgs[b].split('/')[-1][1:5]  # image name 0005

@@ -9,20 +9,20 @@ test_label_dir = dataset/CMUHand/hand_labels/test/crop_label
 
 [training]
 learning_rate   = 8e-6
-batch_size      = 1
-epochs          = 50
-begin_epoch     = 0
+batch_size      = 24
+epochs          = 100
+begin_epoch     = 50
 
 
 [test]
-best_model       =0
+best_model       =40
 predict_label_dir = save/test_label
 predict_labels_dir = save/test_labels
 pck_save_dir    = save/test_pck.csv
 
 
 [predict]
-best_model       =0
+best_model       =40
 predict_data_dir = dataset/CMUHand/hand_labels/test/crop
 predict_label_dir = dataset/CMUHand/hand_labels/test/crop_label
 predict_labels_dir = dataset/CMUHand/hand_labels/test/predict_labels

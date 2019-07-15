@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 
 
 # multi-GPU
-device_ids = [0, 1, 2, 3]
+device_ids = [0, 1]
 
 # *********************** hyper parameter  ***********************
 
@@ -53,6 +53,7 @@ train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 net = CPM(out_c=21)
 
 if cuda:
+    print("Detected gpus.")
     net = net.cuda(device_ids[0])
     net = nn.DataParallel(net, device_ids=device_ids)
 
@@ -99,7 +100,7 @@ def train():
                 print('--loss ' + str(float(loss.data.item())))
 
             if step % 200 == 0:
-                save_images(label_map[:, 5, :, :, :], pred_6[:, 5, :, :, :], step, epoch, imgs)
+                save_images(label_map[:, 5, :, :, :].cpu(), pred_6[:, 5, :, :, :].cpu(), step, epoch, imgs)
 
         if epoch % 5 == 0:
             torch.save(net.state_dict(), os.path.join(save_dir, 'model_epoch{:d}.pth'.format(epoch)))

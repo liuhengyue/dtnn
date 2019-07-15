@@ -4,8 +4,8 @@
 """
 
 # from data_loader.uci_hand_data import UCIHandPoseDataset as Mydata
-from data_loader.cmu_hand_data import CMUHand as Mydata
-from model.cpm import CPM
+from dataloaders.cmu_hand_data import CMUHand as Mydata
+from network.cpm import CPM
 from src.util import *
 
 

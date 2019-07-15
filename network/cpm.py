@@ -13,6 +13,7 @@ Model Output:
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+from torchsummary import summary
 
 
 class CPM(nn.Module):
@@ -259,5 +260,6 @@ if __name__ == "__main__":
     x = torch.randn(2, 3, 368, 368)  # batch size = 2
     c = torch.randn(2, 368, 368)  # batch size = 2
     y = net(x, c)
+    # summary(net, [(3, 368, 368), (368, 368)] )
     print(y.shape)  # torch (2, 6, 21, 45, 45)
 

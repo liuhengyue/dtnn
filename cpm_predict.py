@@ -46,6 +46,13 @@ cuda = torch.cuda.is_available()
 
 sigma = 0.04
 
+# for drawing the limbs
+edges = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]]
+
+colors = [cv2.cvtColor(np.uint8([[[179 * i/float(len(edges)), 179, 179]]]),cv2.COLOR_HSV2BGR)[0, 0] for i in range(len(edges))]
+colors = [(int(color[0]), int(color[1]), int(color[2])) for color in colors]
+
+
 # *********************** function ***********************
 if not os.path.exists(predict_label_dir):
     os.mkdir(predict_label_dir)
@@ -121,9 +128,9 @@ def heatmap_image(img, label,save_dir='/home/haoyum/Tdata/heat_maps/'):
 def get_kpts(map_6, img_h = 368.0, img_w = 368.0):
 
     # map_6 (21,45,45)
-    print(map_6.shape)
     kpts = []
-    for m in map_6[1:]:
+    # for m in map_6[1:]:
+    for m in map_6:
         h, w = np.unravel_index(m.argmax(), m.shape)
         x = int(w * img_w / m.shape[1])
         y = int(h * img_h / m.shape[0])
@@ -131,12 +138,8 @@ def get_kpts(map_6, img_h = 368.0, img_w = 368.0):
     return kpts
 
 def draw_paint(im, kpts):
-
-    colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0], \
-              [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255]]
-    limbSeq = [[13, 12], [12, 9], [12, 8], [9, 10], [8, 7], [10, 11], [7, 6], [12, 3], [12, 2], [2, 1], [1, 0], [3, 4],
-               [4, 5]]
-
+    # first need copy the image !!! Or it won't draw.
+    im = im.copy()
     # draw points
     for k in kpts:
         x = k[0]
@@ -144,18 +147,10 @@ def draw_paint(im, kpts):
         cv2.circle(im, (x, y), radius=1, thickness=-1, color=(0, 0, 255))
 
     # draw lines
-    for i in range(len(limbSeq)):
-        cur_im = im.copy()
-        limb = limbSeq[i]
-        [Y0, X0] = kpts[limb[0]]
-        [Y1, X1] = kpts[limb[1]]
-        mX = np.mean([X0, X1])
-        mY = np.mean([Y0, Y1])
-        length = ((X0 - X1) ** 2 + (Y0 - Y1) ** 2) ** 0.5
-        angle = math.degrees(math.atan2(X0 - X1, Y0 - Y1))
-        polygon = cv2.ellipse2Poly((int(mY), int(mX)), (int(length / 2), 4), int(angle), 0, 360, 1)
-        cv2.fillConvexPoly(cur_im, polygon, colors[i])
-        im = cv2.addWeighted(im, 0.4, cur_im, 0.6, 0)
+    
+    for i, edge in enumerate(edges):
+        s, t = edge
+        cv2.line(im, tuple(kpts[s]), tuple(kpts[t]), color=colors[i])
 
     cv2.imshow('test_example', im)
     cv2.waitKey(0)
@@ -257,11 +252,11 @@ for step, (image, center_map, imgs) in enumerate(test_dataset):
         # ****************** draw keypoints on image ******************
         kpts = get_kpts(pred)
         img_copy = image_cpu[b, :, :, :].permute(1, 2, 0).numpy()
-        img_copy = img_copy[:, :, ::-1]
-        # print(img_copy.shape)
-        # img_copy = np.transpose(img_copy)
-        print(img_copy.shape)
-        print(kpts)
+        img_copy = img_copy[:, :, ::-1] * 255
+        img_copy = img_copy.astype(np.uint8)
+        # print(img_copy)
+        # print(type(img_copy), img_copy.shape)
+        # print(kpts)
         draw_paint(img_copy, kpts)
         break
 

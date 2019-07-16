@@ -11,7 +11,7 @@ test_label_dir = dataset/CMUHand/hand_labels/test/crop_label
 learning_rate   = 8e-6
 batch_size      = 1
 epochs          = 100
-begin_epoch     = 50
+begin_epoch     = 0
 
 
 [test]

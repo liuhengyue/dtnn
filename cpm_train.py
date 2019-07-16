@@ -6,10 +6,12 @@
 # from data_loader.uci_hand_data import UCIHandPoseDataset as Mydata
 from dataloaders.cmu_hand_data import CMUHand as Mydata
 from network.cpm import CPM
+from network.cpm_mobilenet import CPM_MobileNet
 from src.util import *
 
 
 import os
+from collections import OrderedDict
 import torch
 import torch.optim as optim
 import torch.nn as nn
@@ -50,8 +52,8 @@ train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
 # *********************** Build model ***********************
 
-net = CPM(out_c=21)
-
+# net = CPM(out_c=21)
+net = CPM_MobileNet(2)
 if cuda:
     print("Detected gpus.")
     net = net.cuda(device_ids[0])
@@ -60,8 +62,18 @@ if cuda:
 
 if begin_epoch > 0:
     save_path = 'ckpt/model_epoch' + str(begin_epoch) + '.pth'
-    state_dict = torch.load(save_path)
-    net.load_state_dict(state_dict)
+    state_dict = torch.load(save_path, lambda storage, loc: storage)
+    # net.load_state_dict(state_dict)
+    if cuda:
+        net.load_state_dict(state_dict)
+    else:
+        # trained with DataParallel but test on cpu
+        single_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            name = k.replace("module.", "") # remove `module.`
+            single_state_dict[name] = v
+        # load params
+        net.load_state_dict(single_state_dict)
 
 
 def train():
@@ -77,16 +89,17 @@ def train():
             # Batch_size  *  3  *  width(368)  *  height(368)
 
             # 4D Tensor to 5D Tensor
-            label_map = torch.stack([label_map]*6, dim=1)
+            label_map = torch.stack([label_map]*3, dim=1)
             # Batch_size  *  21 *   45  *  45
             # Batch_size  *   6 *   21  *  45  *  45
             label_map = Variable(label_map.cuda() if cuda else label_map)
 
-            center_map = Variable(center_map.cuda() if cuda else center_map)    # 4D Tensor
+            # center_map = Variable(center_map.cuda() if cuda else center_map)    # 4D Tensor
             # Batch_size  *  width(368) * height(368)
 
             optimizer.zero_grad()
-            pred_6 = net(image, center_map)  # 5D tensor:  batch size * stages * 21 * 45 * 45
+            # pred_6 = net(image, center_map)  # 5D tensor:  batch size * stages * 21 * 45 * 45
+            pred_6 = net(image)
 
             # ******************** calculate loss of each joints ********************
             loss = criterion(pred_6, label_map)
@@ -100,7 +113,7 @@ def train():
                 print('--loss ' + str(float(loss.data.item())))
 
             if step % 200 == 0:
-                save_images(label_map[:, 5, :, :, :].cpu(), pred_6[:, 5, :, :, :].cpu(), step, epoch, imgs)
+                save_images(label_map[:, 2, :, :, :].cpu(), pred_6[:, 2, :, :, :].cpu(), step, epoch, imgs)
 
         if epoch % 5 == 0:
             torch.save(net.state_dict(), os.path.join(save_dir, 'model_epoch{:d}.pth'.format(epoch)))

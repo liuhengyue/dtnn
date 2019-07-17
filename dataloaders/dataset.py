@@ -88,6 +88,8 @@ class VideoDataset(Dataset):
         # Loading and preprocessing.
         buffer = self.load_frames(self.fnames[index])
         buffer = self.crop(buffer, self.clip_len, self.crop_size)
+        # resize to 368 by 368
+        buffer = self.resize(buffer)
         labels = np.array(self.label_array[index])
 
         if self.split == 'test':
@@ -336,6 +338,13 @@ class VideoDataset(Dataset):
 
         return buffer
 
+    def resize(self, buffer, size=(368, 368)):
+        B = buffer.shape[0]
+        new_buffer = np.empty((B,) + size + (3,), np.dtype('float32'))
+        for b in range(B):
+            new_buffer[b] = cv2.resize(buffer[b], dsize=size)
+        return new_buffer 
+
 
 
 
@@ -343,7 +352,7 @@ class VideoDataset(Dataset):
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
     train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=8, preprocess=False)
-    train_loader = DataLoader(train_data, batch_size=100, shuffle=True, num_workers=1)
+    train_loader = DataLoader(train_data, batch_size=2, shuffle=True, num_workers=1)
 
     for i, sample in enumerate(train_loader):
         inputs = sample[0]

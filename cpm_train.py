@@ -8,7 +8,7 @@ from dataloaders.cmu_hand_data import CMUHand as Mydata
 from network.cpm import CPM
 from network.cpm_mobilenet import CPM_MobileNet
 from src.util import *
-
+import scipy.misc
 
 import os
 from collections import OrderedDict

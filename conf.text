@@ -15,14 +15,14 @@ begin_epoch     = 0
 
 
 [test]
-best_model       =50
+best_model       =100
 predict_label_dir = save/test_label
 predict_labels_dir = save/test_labels
 pck_save_dir    = save/test_pck.csv
 
 
 [predict]
-best_model       =50
+best_model       =100
 predict_data_dir = dataset/CMUHand/hand_labels/test/crop
 predict_label_dir = dataset/CMUHand/hand_labels/test/crop_label
 predict_labels_dir = dataset/CMUHand/hand_labels/test/predict_labels

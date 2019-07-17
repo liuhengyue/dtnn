@@ -13,7 +13,6 @@ from torch.autograd import Variable
 
 from dataloaders.dataset import VideoDataset
 from network import C3D_model, R2Plus1D_model, R3D_model
-from network import cpm_c3d_model
 
 # Use GPU if available else revert to CPU
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -21,20 +20,17 @@ print("Device being used:", device)
 
 nEpochs = 100  # Number of epochs for training
 resume_epoch = 0  # Default is 0, change if want to resume
-useTest = False # See evolution of the test set when training
+useTest = True # See evolution of the test set when training
 nTestInterval = 20 # Run on test set every nTestInterval epochs
 snapshot = 50 # Store a model every snapshot epochs
 lr = 1e-3 # Learning rate
-pretrained = False
 
-dataset = '20bn-jester' # Options: hmdb51 or ucf101 or 20bn-jester
+dataset = 'ucf101' # Options: hmdb51 or ucf101 or 20bn-jester
 
 if dataset == 'hmdb51':
     num_classes=51
 elif dataset == 'ucf101':
     num_classes = 101
-elif dataset == '20bn-jester':
-    num_classes = 27
 else:
     print('We only implemented hmdb and ucf datasets.')
     raise NotImplementedError
@@ -50,7 +46,7 @@ else:
     run_id = int(runs[-1].split('_')[-1]) + 1 if runs else 0
 
 save_dir = os.path.join(save_dir_root, 'run', 'run_' + str(run_id))
-modelName = 'CPM-C3D' # Options: C3D or R2Plus1D or R3D
+modelName = 'C3D' # Options: C3D or R2Plus1D or R3D
 saveName = modelName + '-' + dataset
 
 def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=lr,
@@ -62,7 +58,7 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
     """
 
     if modelName == 'C3D':
-        model = C3D_model.C3D(num_classes=num_classes, pretrained=pretrained)
+        model = C3D_model.C3D(num_classes=num_classes, pretrained=True)
         train_params = [{'params': C3D_model.get_1x_lr_params(model), 'lr': lr},
                         {'params': C3D_model.get_10x_lr_params(model), 'lr': lr * 10}]
     elif modelName == 'R2Plus1D':
@@ -72,18 +68,6 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
     elif modelName == 'R3D':
         model = R3D_model.R3DClassifier(num_classes=num_classes, layer_sizes=(2, 2, 2, 2))
         train_params = model.parameters()
-    elif modelName == 'CPM-C3D':
-        model = cpm_c3d_model.CPM_C3D(num_classes=num_classes, pretrained_cpm=True, pretrained_c3d=pretrained)
-        cpm_c3d_model.set_no_grad(model)
-        train_params = cpm_c3d_model.get_trainable_params(model)
-        # for name, param in model.named_parameters():
-        #     if param.requires_grad:
-        #         print(name)
-        # for i, p in enumerate(train_params):
-        #     if p.requires_grad:
-        #         print(i)
-        # return
-
     else:
         print('We only implemented C3D and R2Plus1D models.')
         raise NotImplementedError
@@ -110,9 +94,9 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
     writer = SummaryWriter(log_dir=log_dir)
 
     print('Training model on {} dataset...'.format(dataset))
-    train_dataloader = DataLoader(VideoDataset(dataset=dataset, split='train',clip_len=1), batch_size=1, shuffle=True, num_workers=1)
-    val_dataloader   = DataLoader(VideoDataset(dataset=dataset, split='val',  clip_len=1), batch_size=1, num_workers=1)
-    test_dataloader  = DataLoader(VideoDataset(dataset=dataset, split='test', clip_len=1), batch_size=1, num_workers=1)
+    train_dataloader = DataLoader(VideoDataset(dataset=dataset, split='train',clip_len=16), batch_size=20, shuffle=True, num_workers=4)
+    val_dataloader   = DataLoader(VideoDataset(dataset=dataset, split='val',  clip_len=16), batch_size=20, num_workers=4)
+    test_dataloader  = DataLoader(VideoDataset(dataset=dataset, split='test', clip_len=16), batch_size=20, num_workers=4)
 
     trainval_loaders = {'train': train_dataloader, 'val': val_dataloader}
     trainval_sizes = {x: len(trainval_loaders[x].dataset) for x in ['train', 'val']}
@@ -143,10 +127,10 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
                 optimizer.zero_grad()
 
                 if phase == 'train':
-                    heatmaps, outputs = model(inputs)
+                    outputs = model(inputs)
                 else:
                     with torch.no_grad():
-                        heatmaps, outputs = model(inputs)
+                        outputs = model(inputs)
 
                 probs = nn.Softmax(dim=1)(outputs)
                 preds = torch.max(probs, 1)[1]

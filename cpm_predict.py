@@ -7,6 +7,7 @@ step 1: predict label and save into json file for every image
 # from data_loader.uci_hand_data import UCIHandPoseDataset as Mydata
 from dataloaders.cmu_hand_data import CMUHand as Mydata
 from network.cpm import CPM
+from network.cpm_mobilenet import CPM_MobileNet
 
 import configparser
 import numpy as np
@@ -19,6 +20,7 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
+import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import cv2
 
@@ -190,6 +192,22 @@ def Tests_save_label(predict_heatmaps, step, imgs):
         json.dump(label_dict, open(save_dir_label + '/' + str(step) +
                                    '_' + im + '.json', 'w'), sort_keys=True, indent=4)
 
+def image_test(net, image_path):
+    OUTPUT_STAGE = 2
+    frame = Image.open(image_path)
+    frame = frame.resize((368, 368))
+    frame_copy = np.array(frame)
+    frame_copy = frame_copy[:,:,::-1]
+    frame = transforms.ToTensor()(frame)
+    frame.unsqueeze_(0)
+    frame = Variable(frame)
+    pred_6 = net(frame)
+    pred = pred_6[0, OUTPUT_STAGE, :, :, :].cpu().detach().numpy()
+    kpts = get_kpts(pred)
+    # img_copy = image_cpu[b, :, :, :].permute(1, 2, 0).numpy()
+    # img_copy = img_copy[:, :, ::-1] * 255
+    # img_copy = img_copy.astype(np.uint8)
+    draw_paint(frame_copy, kpts) 
 
 # ************************************ Build dataset ************************************
 test_data = Mydata(data_dir=predict_data_dir, label_dir=None, mode="test")
@@ -200,7 +218,8 @@ test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=True)
 
 
 # Build model
-net = CPM(21)
+# net = CPM(21)
+net = CPM_MobileNet(2)
 if cuda:
     net = net.cuda(device_ids[0])
     net = nn.DataParallel(net, device_ids=device_ids)  # multi-Gpu
@@ -223,44 +242,51 @@ else:
 
 print('********* test data *********')
 net.eval()
+test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'
+# test_path = 'dataset/CMUHand/hand_labels/train/crop/001401452_01_r.jpg' 
+# test_path = 'dataset/20bn-jester-preprocessed/val/Stop Sign/234/00027.jpg'
+image_test(net, test_path)
 
-for step, (image, center_map, imgs) in enumerate(test_dataset):
-    image_cpu = image
-    image = Variable(image.cuda() if cuda else image)   # 4D Tensor
-    # Batch_size  *  3  *  width(368)  *  height(368)
-    center_map = Variable(center_map.cuda() if cuda else center_map)  # 4D Tensor
-    # Batch_size  *  width(368) * height(368)
+# OUTPUT_STAGE = 2
 
-    pred_6 = net(image, center_map)  # 5D tensor:  batch size * stages(6) * 41 * 45 * 45
+# for step, (image, center_map, imgs) in enumerate(test_dataset):
+#     image_cpu = image
+#     image = Variable(image.cuda() if cuda else image)   # 4D Tensor
+#     # Batch_size  *  3  *  width(368)  *  height(368)
+#     center_map = Variable(center_map.cuda() if cuda else center_map)  # 4D Tensor
+#     # Batch_size  *  width(368) * height(368)
 
-    # ****************** from heatmap to label ******************
-    Tests_save_label(pred_6[:, 5, :, :, :].cpu(), step, imgs=imgs)
+#     # pred_6 = net(image, center_map)  # 5D tensor:  batch size * stages(6) * 41 * 45 * 45
+#     pred_6 = net(image) 
+
+#     # ****************** from heatmap to label ******************
+#     Tests_save_label(pred_6[:, OUTPUT_STAGE, :, :, :].cpu(), step, imgs=imgs)
 
 
-    # ****************** draw heat maps ******************
-    for b in range(image_cpu.shape[0]):
-        img = image_cpu[b, :, :, :]         # 3D Tensor
-        img = transforms.ToPILImage()(img.data)        # PIL Image
-        pred = pred_6[b, 5, :, :, :].cpu().detach().numpy()     # 3D Numpy
+#     # ****************** draw heat maps ******************
+#     for b in range(image_cpu.shape[0]):
+#         img = image_cpu[b, :, :, :]         # 3D Tensor
+#         img = transforms.ToPILImage()(img.data)        # PIL Image
+#         pred = pred_6[b, OUTPUT_STAGE, :, :, :].cpu().detach().numpy()     # 3D Numpy
 
-        seq = imgs[b].split('/')[-2]  # sequence name 001L0
-        im = imgs[b].split('/')[-1][1:5]  # image name 0005
-        if not os.path.exists(heatmap_dir + seq):
-            os.mkdir(heatmap_dir+seq)
-        img_dir = heatmap_dir + seq + '/' + im + '.jpg'
-        heatmap_image(img, pred, save_dir=img_dir)
-        # ****************** draw keypoints on image ******************
-        kpts = get_kpts(pred)
-        img_copy = image_cpu[b, :, :, :].permute(1, 2, 0).numpy()
-        img_copy = img_copy[:, :, ::-1] * 255
-        img_copy = img_copy.astype(np.uint8)
-        # print(img_copy)
-        # print(type(img_copy), img_copy.shape)
-        # print(kpts)
-        draw_paint(img_copy, kpts)
-        break
+#         seq = imgs[b].split('/')[-2]  # sequence name 001L0
+#         im = imgs[b].split('/')[-1][1:5]  # image name 0005
+#         if not os.path.exists(heatmap_dir + seq):
+#             os.mkdir(heatmap_dir+seq)
+#         img_dir = heatmap_dir + seq + '/' + im + '.jpg'
+#         heatmap_image(img, pred, save_dir=img_dir)
+#         # ****************** draw keypoints on image ******************
+#         kpts = get_kpts(pred)
+#         img_copy = image_cpu[b, :, :, :].permute(1, 2, 0).numpy()
+#         img_copy = img_copy[:, :, ::-1] * 255
+#         img_copy = img_copy.astype(np.uint8)
+#         # print(img_copy)
+#         # print(type(img_copy), img_copy.shape)
+#         # print(kpts)
+#         draw_paint(img_copy, kpts)
+#         break
 
-    break
+#     break
 
 
 

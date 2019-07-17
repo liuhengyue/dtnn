@@ -1,26 +1,59 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from mypath import Path
 from torchsummary import summary
-from cpm import CPM
-from C3D_model import C3D
+# from network.cpm import CPM
+from network.cpm_mobilenet import CPM_MobileNet
+from network.C3D_model import C3D
 
 class CPM_C3D(nn.Module):
     """
     The C3D network.
     """
 
-    def __init__(self, num_classes, pretrained=False):
+    def __init__(self, num_classes, pretrained_c3d=False, pretrained_cpm=True):
         super(CPM_C3D, self).__init__()
-        self.cpm = CPM()
-        self.c3d = C3D(num_classes=num_classes, pretrained=pretrained)
-
+        self.cpm = CPM_MobileNet(2)
+        self.c3d = C3D(num_classes=num_classes, pretrained=pretrained_c3d)
+        # TODO check if it only initialize 3d layers
         self.__init_weight()
-
-        if pretrained:
+        if pretrained_cpm:
+            self.__load_pretrained_cpm_weights()
+            # freeze the weights
+            self.cpm.eval()
+        if pretrained_c3d:
             self.__load_pretrained_weights()
 
-    def forward(self, x, c):
+    def __load_pretrained_cpm_weights(self):
+        cuda = torch.cuda.is_available()
+        # saved model dict
+        state_dict = torch.load(Path.cpm_model_dir(), lambda storage, loc: storage)
+        # with open('state_dict.txt', 'w') as f:
+        #     for item in state_dict.keys():
+        #         f.write("%s\n" % item)
+        # defined model dict
+        s_dict = self.state_dict()
+        # with open('loaded_state_dict.txt', 'w') as f:
+        #     for item in s_dict.keys():
+        #         f.write("%s\n" % item)
+        # print(len(state_dict), len(s_dict))
+        # print(state_dict.keys())
+        if cuda:
+            # TODO: have not test cuda dict matching
+            self.load_state_dict(state_dict)
+        else:
+            # trained with DataParallel but test on cpu
+            # single_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                name = k.replace("module", "cpm") # remove `module.`
+                if name in s_dict.keys():
+                    s_dict[name] = v
+            # load params
+            self.load_state_dict(s_dict)
+
+
+    def forward(self, x):
         """
         C3D takes input shape: (BatchSize, 3, num_frames, 368, 368)
         CPM takes input shape: (BatchSize, 3, 368, 368), (BatchSize, 368, 368)
@@ -29,13 +62,39 @@ class CPM_C3D(nn.Module):
         """
         B, C, N, H, W = x.size()
         x_cpm = x.permute(0, 2, 1, 3, 4)
-        x_cpm = x_cpm.view(-1, C, H, W)
-        print(x_cpm.size())
-        print(c.size())
-        heatmap = self.cpm(x_cpm, c)
-        logits = self.c3d(x)
+        # print(x_cpm.size())
+        x_cpm = x_cpm.contiguous().view(-1, C, H, W)
+        heatmap = self.cpm(x_cpm)
+        heatmap_final_stage = heatmap[:,-1,:,:,:]
+        # _, _, num_kpts, heatmap_h, heatmap_w = heatmap.size()
+        # heatmap = heatmap.view(B, -1, heatmap_h, heatmap_w)
+        # heatmap_final_stage shape: (B, 21, 45, 45)
+        # print(heatmap_final_stage.size())
+        # need this if two networks size mismatch
+        # heatmap_final_stage_upscaled = F.interpolate(heatmap_final_stage, size=(112, 112)) 
+        # heatmap_final_stage_upscaled.unsqueeze_(2)
+        heatmap_final_stage.unsqueeze_(2)
+
+        logits = self.c3d(heatmap_final_stage)
 
         return heatmap, logits
+
+    # def forward(self, x, c):
+    #     """
+    #     C3D takes input shape: (BatchSize, 3, num_frames, 368, 368)
+    #     CPM takes input shape: (BatchSize, 3, 368, 368), (BatchSize, 368, 368)
+    #     Should convert (BatchSize, 3, num_frames, 368, 368) ->
+    #                    (BatchSize * num_frames, 3, 368, 368)
+    #     """
+    #     B, C, N, H, W = x.size()
+    #     x_cpm = x.permute(0, 2, 1, 3, 4)
+    #     x_cpm = x_cpm.view(-1, C, H, W)
+    #     print(x_cpm.size())
+    #     print(c.size())
+    #     heatmap = self.cpm(x_cpm, c)
+    #     logits = self.c3d(x)
+
+    #     return heatmap, logits
 
     def __load_pretrained_weights(self):
         """Initialiaze network."""
@@ -90,6 +149,18 @@ class CPM_C3D(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
+def set_no_grad(model, submodel='cpm'):
+    if submodel == 'cpm':
+        for name, param in model.named_parameters():
+            if submodel in name:
+                param.requires_grad = False
+
+def get_trainable_params(model):
+    for param in model.parameters():
+        if param.requires_grad:
+            yield param
+
+
 def get_1x_lr_params(model):
     """
     This generator returns all the parameters for conv and two fc layers of the net.
@@ -114,9 +185,10 @@ def get_10x_lr_params(model):
 if __name__ == "__main__":
     inputs = torch.rand(1, 3, 1, 368, 368)
     c = torch.randn(1, 368, 368)
-    net = CPM_C3D(num_classes=101, pretrained=False)
-    print(net)
+    net = CPM_C3D(num_classes=27, pretrained_cpm=True, pretrained_c3d=False)
+    # print(net)
     # summary(net, [(3, 1, 368, 368), (368, 368)] )
-    heatmap, output = net.forward(inputs, c)
-    print(heatmap.size())
-    print(output.size())
+    summary(net, (3, 1, 368, 368))
+    # heatmap, output = net.forward(inputs, c)
+    # print(heatmap.size())
+    # print(output.size())

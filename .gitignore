@@ -5,6 +5,7 @@ models/
 dataset/CMUHand/data
 dataset/CMUHand/label
 dataset/CMUHand/hand_labels
+dataset/CMUHand/hand_labels_synth/
 dataset/UCIHand/
 dataset/20bn-jester
 dataset/UCF-101

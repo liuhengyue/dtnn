@@ -30,3 +30,6 @@ class Path(object):
     @staticmethod
     def model_dir():
         return 'models/ucf101-caffe.pth'
+    @staticmethod
+    def cpm_model_dir():
+        return 'ckpt/model_epoch100.pth'

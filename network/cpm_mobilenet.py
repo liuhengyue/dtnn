@@ -137,6 +137,8 @@ class CPM_MobileNet(nn.Module):
         y = torch.stack(stages_output, dim=1)
         return y
 
+
+
 if __name__ == '__main__':
     num_refinement_stages = 2
     net = CPM_MobileNet(num_refinement_stages)

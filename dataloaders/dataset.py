@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import csv
 from sklearn.model_selection import train_test_split
@@ -7,8 +8,13 @@ import torch
 import cv2
 import numpy as np
 from torch.utils.data import Dataset
+ROOT_DIR = os.path.abspath("./")
+print(ROOT_DIR)
+sys.path.insert(0, ROOT_DIR)
 from mypath import Path
-
+from tqdm import tqdm
+import multiprocessing
+from itertools import product
 
 class VideoDataset(Dataset):
     r"""A Dataset for a folder of videos. Expects the directory structure to be
@@ -30,15 +36,16 @@ class VideoDataset(Dataset):
         self.split = split
 
         # The following three parameters are chosen as described in the paper section 4.1
-        self.resize_height = 128
-        self.resize_width = 171
-        self.crop_size = 112
+        self.resize_height = 100
+        self.resize_width = 160
+        self.crop_size = 368
 
         if not self.check_integrity():
             raise RuntimeError('Dataset not found or corrupted.' +
                                ' You need to download it from official website.')
 
         if preprocess or (not self.check_preprocess()):
+            # print(preprocess, not self.check_preprocess())
             print('Preprocessing of {} dataset, this will take long, but it will be done only once.'.format(dataset))
             if dataset == "20bn-jester":
                 self.preprocess_jester()
@@ -87,9 +94,10 @@ class VideoDataset(Dataset):
     def __getitem__(self, index):
         # Loading and preprocessing.
         buffer = self.load_frames(self.fnames[index])
-        buffer = self.crop(buffer, self.clip_len, self.crop_size)
         # resize to 368 by 368
         buffer = self.resize(buffer)
+        buffer = self.crop(buffer, self.clip_len, self.crop_size)
+
         labels = np.array(self.label_array[index])
 
         if self.split == 'test':
@@ -119,7 +127,7 @@ class VideoDataset(Dataset):
                 video_name = os.path.join(os.path.join(self.output_dir, 'train', video_class, video),
                                     sorted(os.listdir(os.path.join(self.output_dir, 'train', video_class, video)))[0])
                 image = cv2.imread(video_name)
-                if np.shape(image)[0] != 128 or np.shape(image)[1] != 171:
+                if image.shape[0] != self.resize_height or image.shape[1] != self.resize_width:
                     return False
                 else:
                     break
@@ -208,6 +216,34 @@ class VideoDataset(Dataset):
         # Release the VideoCapture once it is no longer needed
         capture.release()
 
+    def copy_train(self, train_label):
+        src_dir = os.path.join(self.root_dir, "20bn-jester-v1", train_label[0])
+        dst_dir = os.path.join(self.output_dir, "train", train_label[1], train_label[0])
+        shutil.copytree(src_dir, dst_dir)
+
+    def copy_val(self, val_label):
+        src_dir = os.path.join(self.root_dir, "20bn-jester-v1", val_label[0])
+        dst_dir = os.path.join(self.output_dir, "val", val_label[1], val_label[0])
+        shutil.copytree(src_dir, dst_dir)
+
+    def resize_train_dataset(self, train_label):
+        dst_dir = os.path.join(self.output_dir, "train", train_label[1], train_label[0])
+        for frame_name in os.listdir(dst_dir):  # frame - 0001.jpg
+            frame_full_path = os.path.join(dst_dir, frame_name)
+            frame = cv2.imread(frame_full_path)
+            if frame.shape != (self.resize_width, self.resize_height, 3):
+                frame = cv2.resize(frame, (self.resize_width, self.resize_height))
+                cv2.imwrite(filename=frame_full_path, img=frame)
+
+    def resize_val_dataset(self, val_label):
+        dst_dir = os.path.join(self.output_dir, "val", val_label[1], val_label[0])
+        for frame_name in os.listdir(dst_dir):  # frame - 0001.jpg
+            frame_full_path = os.path.join(dst_dir, frame_name)
+            frame = cv2.imread(frame_full_path)
+            if frame.shape != (self.resize_width, self.resize_height, 3):
+                frame = cv2.resize(frame, (self.resize_width, self.resize_height))
+                cv2.imwrite(filename=frame_full_path, img=frame)
+
     def preprocess_jester(self):
         """
         The origin jester dataset structure: 
@@ -222,6 +258,8 @@ class VideoDataset(Dataset):
         """
         # if os.path.exists(self.output_dir):
         #     shutil.rmtree(self.output_dir)
+
+
         if not os.path.exists(self.output_dir):
             os.mkdir(self.output_dir)
             train_base_dir = os.path.join(self.output_dir, 'train')
@@ -247,34 +285,39 @@ class VideoDataset(Dataset):
         val_labels = self.read_csv_input(val_csv_dir, [0, 1])
         # print(val_labels[:10])
         # copy the whole folder to target dir
-        copy = False
+        # Create thread pool
+        pool = multiprocessing.Pool(4)
+        copy = True
+        resize = True
+
         if copy:
-            for train_label in train_labels:
-                src_dir = os.path.join(self.root_dir, "20bn-jester-v1", train_label[0])
-                dst_dir = os.path.join(self.output_dir, "train", train_label[1], train_label[0])
-                shutil.copytree(src_dir, dst_dir)
-            for val_label in val_labels:
-                src_dir = os.path.join(self.root_dir, "20bn-jester-v1", val_label[0])
-                dst_dir = os.path.join(self.output_dir, "val", val_label[1], val_label[0])
-                shutil.copytree(src_dir, dst_dir)
+            print("copy files from {} to {}...".format("20bn-jester-v1", "train"))
+            # for train_label in tqdm(train_labels):
+
+            for _ in tqdm(pool.imap_unordered(self.copy_train, train_labels), total=len(train_labels)):
+                pass
+            # pool.map(copy_train, train_labels)
+            print("copy files from {} to {}...".format("20bn-jester-v1", "val"))
+            # for val_label in tqdm(val_labels):
+
+            # pool.map(copy_val, val_labels)
+            for _ in tqdm(pool.imap_unordered(self.copy_val, val_labels), total=len(val_labels)):
+                pass
+
 
         # resize image
-        for train_label in train_labels:
-            dst_dir = os.path.join(self.output_dir, "train", train_label[1], train_label[0])
-            for frame_name in os.listdir(dst_dir): # frame - 0001.jpg
-                frame_full_path = os.path.join(dst_dir, frame_name)
-                frame = cv2.imread(frame_full_path)
-                frame = cv2.resize(frame, (self.resize_width, self.resize_height))
-                cv2.imwrite(filename=frame_full_path, img=frame)
+        if resize == True:
+            print("resize images to ({},{})...".format(self.resize_width, self.resize_height))
 
-        for val_label in val_labels:
-            dst_dir = os.path.join(self.output_dir, "val", val_label[1], val_label[0])
-            for frame_name in os.listdir(dst_dir): # frame - 0001.jpg
-                frame_full_path = os.path.join(dst_dir, frame_name)
-                frame = cv2.imread(frame_full_path)
-                frame = cv2.resize(frame, (self.resize_width, self.resize_height))
-                cv2.imwrite(filename=frame_full_path, img=frame)
 
+            for _ in tqdm(pool.imap_unordered(self.resize_train_dataset, train_labels), total=len(train_labels)):
+                pass
+
+
+            for _ in tqdm(pool.imap_unordered(self.resize_val_dataset, val_labels), total=len(val_labels)):
+                pass
+
+        pool.close()
         print('Preprocessing finished.')
 
     def read_csv_input(self, csv_path, selected_entries):
@@ -338,11 +381,11 @@ class VideoDataset(Dataset):
 
         return buffer
 
-    def resize(self, buffer, size=(368, 368)):
+    def resize(self, buffer, size=(400, 640)):
         B = buffer.shape[0]
         new_buffer = np.empty((B,) + size + (3,), np.dtype('float32'))
         for b in range(B):
-            new_buffer[b] = cv2.resize(buffer[b], dsize=size)
+            new_buffer[b] = cv2.resize(buffer[b], dsize=(size[1], size[0]))
         return new_buffer 
 
 

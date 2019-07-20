@@ -39,18 +39,21 @@ class CPM_C3D(nn.Module):
         #         f.write("%s\n" % item)
         # print(len(state_dict), len(s_dict))
         # print(state_dict.keys())
-        if cuda:
-            # TODO: have not test cuda dict matching
-            self.load_state_dict(state_dict)
-        else:
-            # trained with DataParallel but test on cpu
-            # single_state_dict = OrderedDict()
-            for k, v in state_dict.items():
-                name = k.replace("module", "cpm") # remove `module.`
-                if name in s_dict.keys():
-                    s_dict[name] = v
-            # load params
-            self.load_state_dict(s_dict)
+        # trained with DataParallel but test on cpu
+        # single_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            name = k.replace("module", "cpm")  # remove `module.`
+            if name in s_dict.keys():
+                s_dict[name] = v
+
+        self.load_state_dict(s_dict)
+        # if cuda:
+        #     # TODO: have not test cuda dict matching
+        #     self.load_state_dict(s_dict)
+        # else:
+        #
+        #     # load params
+        #     self.load_state_dict(s_dict)
 
 
     def forward(self, x):

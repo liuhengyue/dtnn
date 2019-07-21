@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 from torch.utils.data import Dataset
 ROOT_DIR = os.path.abspath("./")
-print(ROOT_DIR)
 sys.path.insert(0, ROOT_DIR)
 from mypath import Path
 from tqdm import tqdm
@@ -394,7 +393,7 @@ class VideoDataset(Dataset):
 
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
-    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=8, preprocess=False)
+    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=8, preprocess=True)
     train_loader = DataLoader(train_data, batch_size=2, shuffle=True, num_workers=1)
 
     for i, sample in enumerate(train_loader):

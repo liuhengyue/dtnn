@@ -68,7 +68,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import torchvision.transforms as transforms
 
-def heatmap_image(img, label,save_dir='/home/haoyum/Tdata/heat_maps/'):
+def heatmap_image(img, label,save_dir='visualization/heatmap.jpg'):
     """
     draw heat map of each joint
     :param img:             a PIL Image
@@ -126,6 +126,16 @@ def heatmap_image(img, label,save_dir='/home/haoyum/Tdata/heat_maps/'):
 
     target.save(save_dir)
     os.system('rm tmp.jpg')
+
+
+def np2heatmap(heatmap, save_dir='visualization/'):
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
+    c = heatmap.shape[0]
+    for i in range(c):
+        img_dir = os.path.join(save_dir, "{}.jpg".format(i))
+        matplotlib.image.imsave(img_dir, heatmap[i], cmap='gray')
+
 
 def get_kpts(map_6, img_h = 368.0, img_w = 368.0):
 
@@ -203,11 +213,11 @@ def image_test(net, image_path):
     frame = Variable(frame)
     pred_6 = net(frame)
     pred = pred_6[0, OUTPUT_STAGE, :, :, :].cpu().detach().numpy()
-    kpts = get_kpts(pred)
-    # img_copy = image_cpu[b, :, :, :].permute(1, 2, 0).numpy()
-    # img_copy = img_copy[:, :, ::-1] * 255
-    # img_copy = img_copy.astype(np.uint8)
-    draw_paint(frame_copy, kpts) 
+    return pred
+    # heatmap_image(img, pred)
+    # kpts = get_kpts(pred)
+    # draw_paint(frame_copy, kpts)
+
 
 # ************************************ Build dataset ************************************
 test_data = Mydata(data_dir=predict_data_dir, label_dir=None, mode="test")
@@ -243,9 +253,20 @@ else:
 print('********* test data *********')
 net.eval()
 test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'
+test_folder = 'dataset/20bn-jester-preprocessed/val/Stop Sign/234'
+save_base = os.path.join('visualization', os.path.basename(test_folder))
+if not os.path.exists(save_base):
+    os.mkdir(save_base)
+test_file_names = os.listdir(test_folder)
+for file_name in test_file_names:
+    img_dir = os.path.join(test_folder, file_name)
+    pred = image_test(net, img_dir)
+    save_dir = os.path.join(save_base, os.path.splitext(file_name)[0])
+
+    np2heatmap(pred, save_dir=save_dir)
 # test_path = 'dataset/CMUHand/hand_labels/train/crop/001401452_01_r.jpg' 
 # test_path = 'dataset/20bn-jester-preprocessed/val/Stop Sign/234/00027.jpg'
-image_test(net, test_path)
+# image_test(net, test_path)
 
 # OUTPUT_STAGE = 2
 

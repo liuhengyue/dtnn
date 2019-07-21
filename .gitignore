@@ -2,6 +2,7 @@
 .idea/
 __pycache__
 ckpt/
+visualization/
 models/
 dataset/CMUHand/data
 dataset/CMUHand/label

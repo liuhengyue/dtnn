@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os, sys
+ROOT_DIR = os.path.abspath("./")
+sys.path.insert(0, ROOT_DIR)
 from mypath import Path
 from torchsummary import summary
 # from network.cpm import CPM
@@ -59,16 +62,24 @@ class CPM_C3D(nn.Module):
     def forward(self, x):
         """
         C3D takes input shape: (BatchSize, 3, num_frames, 368, 368)
-        CPM takes input shape: (BatchSize, 3, 368, 368), (BatchSize, 368, 368)
+        Mobile_CPM takes input shape: (BatchSize, 3, 368, 368)
+        x shape: (BatchSize, 3, num_frames, 368, 368)
         Should convert (BatchSize, 3, num_frames, 368, 368) ->
                        (BatchSize * num_frames, 3, 368, 368)
         """
         B, C, N, H, W = x.size()
-        x_cpm = x.permute(0, 2, 1, 3, 4)
-        # print(x_cpm.size())
-        x_cpm = x_cpm.contiguous().view(-1, C, H, W)
-        heatmap = self.cpm(x_cpm)
-        heatmap_final_stage = heatmap[:,-1,:,:,:]
+        batch_heatmaps = []
+        for b in range(B):
+            x_slice = x[b] # (3, N, H, W)
+            x_slice = x_slice.permute(1, 0, 2, 3) # (N, 3, H, W)
+            heatmap = self.cpm(x_slice) # (N, 3 stages, 21, 45, 45)
+            heatmap_final_stage = heatmap[:, -1, :, :, :] # (N, 21, 45, 45)
+            heatmap_final_stage = heatmap_final_stage.permute(1, 0, 2, 3) # (21, N, 45, 45)
+            batch_heatmaps.append(heatmap_final_stage)
+
+        batch_heatmaps = torch.stack(batch_heatmaps)
+        # print(batch_heatmaps.size())
+
         # _, _, num_kpts, heatmap_h, heatmap_w = heatmap.size()
         # heatmap = heatmap.view(B, -1, heatmap_h, heatmap_w)
         # heatmap_final_stage shape: (B, 21, 45, 45)
@@ -76,11 +87,12 @@ class CPM_C3D(nn.Module):
         # need this if two networks size mismatch
         # heatmap_final_stage_upscaled = F.interpolate(heatmap_final_stage, size=(112, 112)) 
         # heatmap_final_stage_upscaled.unsqueeze_(2)
-        heatmap_final_stage.unsqueeze_(2)
+        # heatmap_final_stage.unsqueeze_(2)
+        # print(heatmap_final_stage.size())
+        logits = self.c3d(batch_heatmaps)
+        # print(logits.size())
 
-        logits = self.c3d(heatmap_final_stage)
-
-        return heatmap, logits
+        return batch_heatmaps, logits
 
     # def forward(self, x, c):
     #     """
@@ -186,12 +198,11 @@ def get_10x_lr_params(model):
                 yield k
 
 if __name__ == "__main__":
-    inputs = torch.rand(1, 3, 1, 368, 368)
-    c = torch.randn(1, 368, 368)
-    net = CPM_C3D(num_classes=27, pretrained_cpm=True, pretrained_c3d=False)
+    inputs = torch.rand(2, 3, 4, 368, 368)
+    net = CPM_C3D(num_classes=27, pretrained_cpm=False, pretrained_c3d=False)
+    net = net.cuda() if torch.cuda.is_available() else net
     # print(net)
-    # summary(net, [(3, 1, 368, 368), (368, 368)] )
-    summary(net, (3, 1, 368, 368))
-    # heatmap, output = net.forward(inputs, c)
-    # print(heatmap.size())
-    # print(output.size())
+    # summary(net, (3, 1, 368, 368))
+    heatmap, output = net.forward(inputs)
+    print(heatmap.size())
+    print(output.size())

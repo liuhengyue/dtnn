@@ -9,6 +9,7 @@ import torch
 from tensorboardX import SummaryWriter
 from torch import nn, optim
 from torch.utils.data import DataLoader
+from torch.utils.data import RandomSampler
 from torch.autograd import Variable
 
 from dataloaders.dataset import VideoDataset
@@ -23,7 +24,7 @@ nEpochs = 100  # Number of epochs for training
 resume_epoch = 0  # Default is 0, change if want to resume
 useTest = False # See evolution of the test set when training
 nTestInterval = 20 # Run on test set every nTestInterval epochs
-snapshot = 50 # Store a model every snapshot epochs
+snapshot = 1 # Store a model every snapshot epochs
 lr = 1e-3 # Learning rate
 pretrained = False
 
@@ -110,9 +111,20 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
     writer = SummaryWriter(log_dir=log_dir)
 
     print('Training model on {} dataset...'.format(dataset))
-    train_dataloader = DataLoader(VideoDataset(dataset=dataset, split='train',clip_len=16), batch_size=2, shuffle=True, num_workers=2)
-    val_dataloader   = DataLoader(VideoDataset(dataset=dataset, split='val',  clip_len=16), batch_size=2, num_workers=2)
-    test_dataloader  = DataLoader(VideoDataset(dataset=dataset, split='test', clip_len=16), batch_size=2, num_workers=2)
+    train_dataset = VideoDataset(dataset=dataset, split='train',clip_len=16)
+    val_dataset = VideoDataset(dataset=dataset, split='val', clip_len=16)
+    test_dataset = VideoDataset(dataset=dataset, split='test', clip_len=16)
+
+
+    # or just try a subset
+    # train_sampler = RandomSampler(train_dataset, replacement=True, num_samples=200)
+    # val_sampler = RandomSampler(val_dataset, replacement=True, num_samples=200)
+    train_sampler, val_sampler = None, None
+    train_shuffle = True
+
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=2, shuffle=train_shuffle, num_workers=1)
+    val_dataloader   = DataLoader(val_dataset, sampler=val_sampler, batch_size=2, num_workers=1)
+    test_dataloader  = DataLoader(test_dataset, batch_size=2, num_workers=1)
 
     trainval_loaders = {'train': train_dataloader, 'val': val_dataloader}
     trainval_sizes = {x: len(trainval_loaders[x].dataset) for x in ['train', 'val']}

@@ -91,20 +91,24 @@ class VideoDataset(Dataset):
         return len(self.fnames)
 
     def __getitem__(self, index):
-        # Loading and preprocessing.
-        buffer = self.load_frames(self.fnames[index])
-        # resize to 368 by 368
-        buffer = self.resize(buffer)
-        buffer = self.crop(buffer, self.clip_len, self.crop_size)
+        try:
+            # Loading and preprocessing.
+            buffer = self.load_frames(self.fnames[index])
+            # resize to 368 by 368
+            buffer = self.resize(buffer)
+            buffer = self.crop(buffer, self.clip_len, self.crop_size)
 
-        labels = np.array(self.label_array[index])
+            labels = np.array(self.label_array[index])
 
-        if self.split == 'test':
-            # Perform data augmentation
-            buffer = self.randomflip(buffer)
-        buffer = self.normalize(buffer)
-        buffer = self.to_tensor(buffer)
-        return torch.from_numpy(buffer), torch.from_numpy(labels)
+            if self.split == 'test':
+                # Perform data augmentation
+                buffer = self.randomflip(buffer)
+            buffer = self.normalize(buffer)
+            buffer = self.to_tensor(buffer)
+            return torch.from_numpy(buffer), torch.from_numpy(labels)
+        except:
+            print("error when loading {}.".format(self.fnames[index]))
+            return None, None
 
     def check_integrity(self):
         if not os.path.exists(self.root_dir):

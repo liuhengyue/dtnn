@@ -149,6 +149,9 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
                 model.eval()
 
             for inputs, labels in tqdm(trainval_loaders[phase]):
+                # if it did not load the dataset successfully for some images, skip
+                if inputs == None or labels == None:
+                    continue
                 # move inputs and labels to the device the training is taking place on
                 inputs = Variable(inputs, requires_grad=True).to(device)
                 labels = Variable(labels).to(device)

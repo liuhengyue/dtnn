@@ -17,3 +17,5 @@ dataset/UCF101.rar
 dataset/20bn-jester-preprocessed
 conf.text
 *.zip
+
+nnsearch/nnsearchsaved

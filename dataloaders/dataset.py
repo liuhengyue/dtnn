@@ -91,13 +91,13 @@ class VideoDataset(Dataset):
         return len(self.fnames)
 
     def __getitem__(self, index):
+        # index = 112257
         try:
             # Loading and preprocessing.
             buffer = self.load_frames(self.fnames[index])
             # resize to 368 by 368
             buffer = self.resize(buffer)
             buffer = self.crop(buffer, self.clip_len, self.crop_size)
-
             labels = np.array(self.label_array[index])
 
             if self.split == 'test':
@@ -107,7 +107,7 @@ class VideoDataset(Dataset):
             buffer = self.to_tensor(buffer)
             return torch.from_numpy(buffer), torch.from_numpy(labels)
         except:
-            print("error when loading {}.".format(self.fnames[index]))
+            print("error when loading [{}]{}.".format(index, self.fnames[index]))
             return None, None
 
     def check_integrity(self):
@@ -359,8 +359,9 @@ class VideoDataset(Dataset):
 
     def load_frames(self, file_dir):
         frames = sorted([os.path.join(file_dir, img) for img in os.listdir(file_dir)])
-        frame_count = len(frames)
-        buffer = np.empty((frame_count, self.resize_height, self.resize_width, 3), np.dtype('float32'))
+        frame_count = len(frames) if len(frames) >= self.clip_len else self.clip_len
+        # change empty to zeros, since some video has less frames; also change frame_count to clip_len
+        buffer = np.zeros((frame_count, self.resize_height, self.resize_width, 3), np.dtype('float32'))
         for i, frame_name in enumerate(frames):
             frame = np.array(cv2.imread(frame_name)).astype(np.float64)
             buffer[i] = frame
@@ -369,8 +370,8 @@ class VideoDataset(Dataset):
 
     def crop(self, buffer, clip_len, crop_size):
         # randomly select time index for temporal jittering
-        time_index = np.random.randint(buffer.shape[0] - clip_len)
-
+        time_padding = buffer.shape[0] - clip_len
+        time_index = np.random.randint(time_padding) if time_padding > 0 else 0
         # Randomly select start indices in order to crop the video
         height_index = np.random.randint(buffer.shape[1] - crop_size)
         width_index = np.random.randint(buffer.shape[2] - crop_size)

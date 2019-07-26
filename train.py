@@ -54,6 +54,15 @@ save_dir = os.path.join(save_dir_root, 'run', 'run_' + str(run_id))
 modelName = 'CPM-C3D' # Options: C3D or R2Plus1D or R3D
 saveName = modelName + '-' + dataset
 
+def filter_none_collate(batch):
+    "Puts each data field into a tensor with outer dimension batch size"
+    batch = list(filter (lambda x:x[0] is not None and x[1] is not None, batch))
+    if batch == []:
+        return []
+    # if list has only one element, it should be also fine
+    collate = torch.utils.data.dataloader.default_collate(batch)
+    return collate
+
 def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=lr,
                 num_epochs=nEpochs, save_epoch=snapshot, useTest=useTest, test_interval=nTestInterval):
     """
@@ -122,8 +131,8 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
     train_sampler, val_sampler = None, None
     train_shuffle = True
 
-    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=2, shuffle=train_shuffle, num_workers=1)
-    val_dataloader   = DataLoader(val_dataset, sampler=val_sampler, batch_size=2, num_workers=1)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=2, shuffle=train_shuffle, num_workers=1, collate_fn=filter_none_collate)
+    val_dataloader   = DataLoader(val_dataset, sampler=val_sampler, batch_size=2, num_workers=1, collate_fn=filter_none_collate)
     test_dataloader  = DataLoader(test_dataset, batch_size=2, num_workers=1)
 
     trainval_loaders = {'train': train_dataloader, 'val': val_dataloader}
@@ -148,10 +157,11 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
             else:
                 model.eval()
 
-            for inputs, labels in tqdm(trainval_loaders[phase]):
+            for data in tqdm(trainval_loaders[phase]):
                 # if it did not load the dataset successfully for some images, skip
-                if inputs == None or labels == None:
+                if data == []:
                     continue
+                inputs, labels = data
                 # move inputs and labels to the device the training is taking place on
                 inputs = Variable(inputs, requires_grad=True).to(device)
                 labels = Variable(labels).to(device)

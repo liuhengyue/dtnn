@@ -76,6 +76,7 @@ class GatedVgg(GatedChainNetwork):
             in_channels, stage.nchannels, kernel_size, padding=1 )
           modules.append( m )
           shape = tuple([in_channels]) + in_shape[1:]
+          print(shape)
           # self.gated_modules.append( (m, shape) )
           gated_modules.append( (m, shape) )
         else:
@@ -108,6 +109,8 @@ class GatedVgg(GatedChainNetwork):
     # Classification layer
     modules.append( FullyConnected( in_channels, nclasses ) )
     # self.fn = nn.ModuleList( modules )
+    # print("modules------------------",modules)
+    # print("gated modules------------------", gated_modules)
     super().__init__( gate, modules, gated_modules, **kwargs )
     
 # ----------------------------------------------------------------------------
@@ -129,34 +132,35 @@ if __name__ == "__main__":
   root_logger.addHandler(handler)
   
   conv_stages = [
-    GatedVggStage(2, 64, 8), GatedVggStage(3, 128, 8), GatedVggStage(3, 256, 16) ]
-  fc_stage = GatedVggStage(2, 4096, 16)
+    GatedVggStage(2, 64, 8), GatedVggStage(3, 128, 8), GatedVggStage(3, 256, 16)] # ,
+  fc_stage = GatedVggStage(1, 4096, 16)
   gate_modules = []
   
-  # for conv_stage in conv_stages:
-    # for _ in range(conv_stage.nlayers):
-      # count = strategy.PlusOneCount( strategy.UniformCount( conv_stage.ncomponents - 1 ) )
-      # gate_modules.append( strategy.NestedCountGate( conv_stage.ncomponents, count ) )
-  # for _ in range(fc_stage.nlayers):
-    # count = strategy.PlusOneCount( strategy.UniformCount( fc_stage.ncomponents - 1 ) )
-    # gate_modules.append( strategy.NestedCountGate( fc_stage.ncomponents, count ) )
-  # gate = strategy.SequentialGate( gate_modules )
-  
-  groups = []
-  gi = 0
   for conv_stage in conv_stages:
-    count = strategy.PlusOneCount( strategy.UniformCount( conv_stage.ncomponents - 1 ) )
-    gate_modules.append( strategy.NestedCountGate( conv_stage.ncomponents, count ) )
-    groups.extend( [gi] * conv_stage.nlayers )
-    gi += 1
-  count = strategy.PlusOneCount( strategy.UniformCount( fc_stage.ncomponents - 1 ) )
-  gate_modules.append( strategy.NestedCountGate( fc_stage.ncomponents, count ) )
-  groups.extend( [gi] * fc_stage.nlayers )
-  gate = strategy.GroupedGate( gate_modules, groups )
+    for _ in range(conv_stage.nlayers):
+      count = strategy.PlusOneCount( strategy.UniformCount( conv_stage.ncomponents - 1 ) )
+      gate_modules.append( strategy.NestedCountGate( conv_stage.ncomponents, count ) )
+  for _ in range(fc_stage.nlayers):
+    count = strategy.PlusOneCount( strategy.UniformCount( fc_stage.ncomponents - 1 ) )
+    gate_modules.append( strategy.NestedCountGate( fc_stage.ncomponents, count ) )
+  gate = strategy.SequentialGate( gate_modules )
+  
+  # groups = []
+  # gi = 0
+  # for conv_stage in conv_stages:
+  #   count = strategy.PlusOneCount( strategy.UniformCount( conv_stage.ncomponents - 1 ) )
+  #   gate_modules.append( strategy.NestedCountGate( conv_stage.ncomponents, count ) )
+  #   groups.extend( [gi] * conv_stage.nlayers )
+  #   gi += 1
+  # count = strategy.PlusOneCount( strategy.UniformCount( fc_stage.ncomponents - 1 ) )
+  # gate_modules.append( strategy.NestedCountGate( fc_stage.ncomponents, count ) )
+  # groups.extend( [gi] * fc_stage.nlayers )
+  # gate = strategy.GroupedGate( gate_modules, groups )
+
   
   net = GatedVgg( gate, (3, 32, 32), 10, conv_stages, fc_stage )
   print( net )
   x = torch.rand( 4, 3, 32, 32 )
-  y = net(Variable(x))
+  y = net(Variable(x), torch.tensor(0.5))
   print( y )
-  y.backward
+  y[0].backward

@@ -75,7 +75,8 @@ class GatedConcat(GatedModule, nn.Module):
       out = torch.unbind( out, dim=1 )
       # dim1 is now "channels" (N). out: BxNx...
       out = torch.cat( out, dim=1 )
-      log.micro( "forward.vectorized: %s", out )
+
+      # log.micro( "forward.vectorized: %s", out )
     else: # Avoids unnecessary computation
       out = []
       bs = torch.split( x, 1, dim=0 )
@@ -308,6 +309,7 @@ class GatedChainNetwork(nn.Module):
     # layers in the data network in a modular way?
     self.gate.reset( x )
     for m in self.fn:
+      # print(type(m))
       if isinstance(m, GatedModule):
         self.gate.next_module( m )
         g, info = expand( self.gate( x ) )
@@ -318,5 +320,6 @@ class GatedChainNetwork(nn.Module):
         x = m( x, g )
       else:
         x = m( x )
+      print(x.size())
     log.debug( "network.x: %s", x )
     return x, gs

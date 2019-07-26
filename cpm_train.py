@@ -53,7 +53,8 @@ train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 # *********************** Build model ***********************
 
 # net = CPM(out_c=21)
-net = CPM_MobileNet(2)
+n_refine_stages = 2
+net = CPM_MobileNet(n_refine_stages)
 if cuda:
     print("Detected gpus.")
     net = net.cuda(device_ids[0])
@@ -89,7 +90,7 @@ def train():
             # Batch_size  *  3  *  width(368)  *  height(368)
 
             # 4D Tensor to 5D Tensor
-            label_map = torch.stack([label_map]*3, dim=1)
+            label_map = torch.stack([label_map]*(n_refine_stages + 1), dim=1)
             # Batch_size  *  21 *   45  *  45
             # Batch_size  *   6 *   21  *  45  *  45
             label_map = Variable(label_map.cuda() if cuda else label_map)

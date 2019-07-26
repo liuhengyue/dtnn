@@ -38,7 +38,7 @@ class UniformCount(nn.Module):
     batch_size = x.size(0)
     p = Variable(torch.ones(batch_size, self._n+1).type_as(x.data))
     nactive = torch.multinomial( p, 1 ).squeeze().float()
-    log.micro( "UniformCount.nactive: %s", nactive )
+    # log.micro( "UniformCount.nactive: %s", nactive )
     return nactive
     
 class BinomialCount(nn.Module):
@@ -64,7 +64,7 @@ class PlusOneCount(nn.Module):
   def forward( self, x ):
     nactive = self._base( x )
     g = 1 + nactive
-    log.micro( "PlusOneCount.nactive: %s", g )
+    # log.micro( "PlusOneCount.nactive: %s", g )
     return g
 
 class CountGate(nn.Module, metaclass=abc.ABCMeta):
@@ -111,7 +111,8 @@ class NestedCountGate(CountGate):
   """
   def __init__( self, *args, **kwargs ):
     super().__init__( *args, **kwargs )
-  
+  def set_control( self, u ):
+    self._u = u
   def _arrange_gate_matrix( self, g ):
     return g
 

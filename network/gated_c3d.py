@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from nnsearch.pytorch.gated.module import (BlockGatedConv2d, BlockGatedFullyConnected, 
     GatedChainNetwork, GatedModule)
-from modules.conv import gatedConvBlock, gatedDwConvBlock, gated3dConvBlock
+from modules.conv import gatedConvBlock, gatedDwConvBlock, gated3dConvBlock, Maxpool3dWrapper
 import nnsearch.pytorch.gated.strategy as strategy
 from nnsearch.pytorch.modules import FullyConnected
 import nnsearch.pytorch.torchx as torchx
@@ -57,7 +57,7 @@ def VggE(nconv_stages, ncomponents, scale_ncomponents=False):
 
 # ----------------------------------------------------------------------------
 
-class GatedMobilenet(GatedChainNetwork):
+class GatedC3D(GatedChainNetwork):
     """ A parameterizable VGG-style architecture.
 
     @article{simonyan2014very,
@@ -68,17 +68,13 @@ class GatedMobilenet(GatedChainNetwork):
     }
     """
 
-    def __init__(self, gate, in_shape, nclasses, bb_stages, fc_stage,
-                 initial_stage, refine_stage, c3d_stage, batchnorm=False, dropout=0.5, **kwargs):
-        # super().__init__()
-        # self.gate = gate
-        self.bb_stages = bb_stages
+    def __init__(self, gate, in_shape, nclasses, c3d_stage, fc_stage,
+                 batchnorm=False, dropout=0.5, **kwargs):
+        # in_shape: (C, D, H, W), D is time/sequence
+
         self.fc_stage = fc_stage
-        self.initial_stage = initial_stage
-        self.refine_stage = refine_stage
         self.c3d_stage = c3d_stage
         self.nclasses = nclasses
-        self.kernel_size = 3
         self.batchnorm = batchnorm
         self.dropout = dropout
         self.in_shape = in_shape
@@ -86,9 +82,6 @@ class GatedMobilenet(GatedChainNetwork):
         self.modules = []
         self.tmp_gated_modules = [] # GatedChainNetwork has a property called gated_modules
         
-        self.__set_backbone()
-        # add initial and refinement stages here
-        self.__set_initial_stage()
         self.__set_c3d_model()
         # self.__set_fc()
         # self.__set_classification_layer()
@@ -97,45 +90,6 @@ class GatedMobilenet(GatedChainNetwork):
         # print("gated modules------------------", gated_modules)
         super().__init__(gate, self.modules, self.tmp_gated_modules, **kwargs)
 
-    def __set_backbone(self):
-        for i, stage in enumerate(self.bb_stages):
-            for _ in range(stage.nlayers):
-                if stage.ncomponents > 1:
-                    # first conv stage is just a single conv block
-                    if i > 0:
-                        m, gated_m, in_shape = gatedDwConvBlock(stage.ncomponents, self.in_shape, self.in_channels, stage.nchannels, 
-                            kernel_size=stage.kernel_size, padding=stage.padding)
-                    else:
-                        m, gated_m, in_shape = gatedConvBlock(stage.ncomponents, self.in_shape, self.in_channels, stage.nchannels,
-                            kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding, bias=True)
-                    self.in_shape = in_shape
-                    self.modules.extend(m)
-                    self.tmp_gated_modules.extend(gated_m)
-                else:
-                    self.modules.append(nn.Conv2d(
-                        self.in_channels, stage.nchannels, stage.kernel_size, padding=1))
-                if self.batchnorm:
-                    self.modules.append(nn.BatchNorm2d(stage.nchannels))
-                # modules.append(nn.ReLU())
-                self.in_channels = stage.nchannels
-
-    def __set_initial_stage(self):
-        for i, stage in enumerate(self.initial_stage):
-            for _ in range(stage.nlayers):
-                if stage.ncomponents > 1:
-
-                    m, gated_m, in_shape = gatedConvBlock(stage.ncomponents, self.in_shape, self.in_channels, stage.nchannels,
-                                            kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding, bias=True)
-                    self.in_shape = in_shape
-                    self.modules.extend(m)
-                    self.tmp_gated_modules.extend(gated_m)
-                else:
-                    self.modules.append(nn.Conv2d(
-                        self.in_channels, stage.nchannels, stage.kernel_size, padding=stage.padding))
-                if self.batchnorm:
-                    self.modules.append(nn.BatchNorm2d(stage.nchannels))
-                # modules.append(nn.ReLU())
-                self.in_channels = stage.nchannels
 
     def __set_c3d_model(self):
         for i, stage in enumerate(self.c3d_stage):
@@ -151,10 +105,15 @@ class GatedMobilenet(GatedChainNetwork):
                         self.in_channels, stage.nchannels, stage.kernel_size, padding=stage.padding))
                 if self.batchnorm:
                     self.modules.append(nn.BatchNorm3d(stage.nchannels))
-                # modules.append(nn.ReLU())
+                # add maxpool
+                pool, in_shape = Maxpool3dWrapper(self.in_shape, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+                self.modules.extend(pool)
+                self.in_shape = in_shape
+                # compute 3dpool shape
+                print(self.in_shape)
                 self.in_channels = stage.nchannels
 
-    def __set_fc(self):
+    def __set_fc(self): 
         # FC layers
         self.in_shape = tuple([self.in_channels] + list(self.in_shape[1:]))
         self.in_channels = reduce(operator.mul, self.in_shape)
@@ -240,31 +199,12 @@ if __name__ == "__main__":
     root_logger.addHandler(handler)
 
     # order: "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
-    backbone_stages = [GatedStage(3, 2, 0, 1,  32, 4), GatedStage(3, 1, 1, 1,  64, 4),
-                       GatedStage(3, 2, 0, 1, 128, 4), GatedStage(3, 1, 1, 1, 128, 4),
-                       GatedStage(3, 2, 0, 1, 256, 4), GatedStage(3, 1, 1, 1, 256, 4),
-                       GatedStage(3, 1, 1, 1, 512, 4), GatedStage(3, 1, 2, 1, 512, 4),
-                       GatedStage(3, 1, 1, 4, 512, 4)]
-
-    initial_stage = [GatedStage(3, 1, 1, 3, 128, 4), GatedStage(1, 1, 0, 1, 512, 4),
-                     GatedStage(1, 1, 0, 1, 21, 1)] 
-    
-
     c3d_stage = [GatedStage(3, 1, 1, 1, 64, 4)]
 
     fc_stage = GatedVggStage(1, 512, 2)
     gate_modules = []
 
-    for i, conv_stage in enumerate(backbone_stages):
-        for _ in range(conv_stage.nlayers):
-            # each stage uses depthwise conv2d with two gated layers except for the first conv stage
-            if i > 0:
-                count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-                gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
-            count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-            gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
-
-    for i, conv_stage in enumerate(initial_stage):
+    for i, conv_stage in enumerate(c3d_stage):
         for _ in range(conv_stage.nlayers):
             count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
             gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
@@ -287,9 +227,9 @@ if __name__ == "__main__":
     # groups.extend( [gi] * fc_stage.nlayers )
     # gate = strategy.GroupedGate( gate_modules, groups )
 
-    net = GatedMobilenet(gate, (3, 32, 32), 21, backbone_stages, fc_stage, initial_stage, [], c3d_stage)
+    net = GatedC3D(gate, (3, 16, 32, 32), 27, c3d_stage, fc_stage)
     print(net)
-    x = torch.rand( 2, 3, 32, 32)
-    y = net(Variable(x), torch.tensor(0.5))
-    print( y )
-    y[0].backward
+    x = torch.rand( 2, 3, 16, 32, 32)
+    y, g = net(Variable(x), torch.tensor(0.5))
+    print("output size: {}| gate size: {}".format(y.size(), len(g)))
+    y.backward

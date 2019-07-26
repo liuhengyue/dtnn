@@ -105,8 +105,10 @@ class GatedC3D(GatedChainNetwork):
                         self.in_channels, stage.nchannels, stage.kernel_size, padding=stage.padding))
                 if self.batchnorm:
                     self.modules.append(nn.BatchNorm3d(stage.nchannels))
-                # add maxpool
-                pool, in_shape = Maxpool3dWrapper(self.in_shape, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+                # add maxpool TODO: better structure
+                pool_kernel_size = (1, 2, 2) if i == 0 else 2
+                pool_stride = (1, 2, 2) if i == 0 else 2
+                pool, in_shape = Maxpool3dWrapper(self.in_shape, kernel_size=pool_kernel_size, stride=pool_stride)
                 self.modules.extend(pool)
                 self.in_shape = in_shape
                 # compute 3dpool shape
@@ -199,7 +201,7 @@ if __name__ == "__main__":
     root_logger.addHandler(handler)
 
     # order: "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
-    c3d_stage = [GatedStage(3, 1, 1, 1, 64, 4)]
+    c3d_stage = [GatedStage(3, 1, 1, 1, 64, 4), GatedStage(3, 1, 1, 1, 128, 4)]
 
     fc_stage = GatedVggStage(1, 512, 2)
     gate_modules = []

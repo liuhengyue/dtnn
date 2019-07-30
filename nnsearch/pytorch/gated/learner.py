@@ -16,11 +16,11 @@ log = logging.getLogger( __name__ )
 
 # FIXME: This class is not specific to gated networks
 class Learner:
-  def __init__( self, network, optimizer, learning_rate ):
+  def __init__( self, network, optimizer, learning_rate, criterion=None):
     self.network = network
     self.optimizer = optimizer
     self.learning_rate = learning_rate
-    self.criterion = nn.CrossEntropyLoss( reduce=False )
+    self.criterion = nn.CrossEntropyLoss( reduce=False ) if criterion == None else criterion
     
     self.histogram_bins = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]
     self.grad_histogram = None
@@ -29,10 +29,10 @@ class Learner:
     # Classification error
     batch_size = yhat.size(0)
     loss = self.criterion( yhat, labels )
-    
-    _, predicted = torch.max( yhat.data, 1 )
-    correct = torch.sum( predicted == labels.data )
-    log.info( "loss.errors: %s", batch_size - correct )
+    if isinstance(self.criterion, nn.CrossEntropyLoss):
+      _, predicted = torch.max( yhat.data, 1 )
+      correct = torch.sum( predicted == labels.data )
+      log.info( "loss.errors: %s", batch_size - correct )
     
     return loss
   
@@ -133,8 +133,8 @@ class Learner:
 
 class GatedNetworkLearner(Learner):
   def __init__( self, network, optimizer, learning_rate,
-      gate_policy, gate_control ):
-    super().__init__( network, optimizer, learning_rate )
+      gate_policy, gate_control, **kwargs ):
+    super().__init__( network, optimizer, learning_rate, **kwargs )
     self.gate_policy = gate_policy
     self.gate_control = gate_control
 
@@ -164,7 +164,11 @@ class GatedNetworkLearner(Learner):
 class GatedDataPathLearner(GatedNetworkLearner):
   """ Learner for training the entire network. Use with a fixed gating
   strategy for two-phase gated network training.
-  """    
+
+  """
+  def __init__( self, network, optimizer, learning_rate,
+      gate_policy, gate_control, **kwargs ):
+    super().__init__( network, optimizer, learning_rate, gate_policy, gate_control, **kwargs )
   def loss( self, yhat, labels ):
     return self._class_loss( yhat, labels )
     

@@ -320,6 +320,6 @@ class GatedChainNetwork(nn.Module):
         x = m( x, g )
       else:
         x = m( x )
-      print(x.size())
+      # print(x.size())
     log.debug( "network.x: %s", x )
     return x, gs

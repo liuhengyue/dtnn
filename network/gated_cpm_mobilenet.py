@@ -21,7 +21,7 @@ GatedVggStage = namedtuple("GatedVggStage",
                            ["nlayers", "nchannels", "ncomponents"])
 
 GatedStage = namedtuple("GatedStage",
-                           ["kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"])
+                           ["name", "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"])
 
 def _Vgg_params(nlayers, nconv_stages, ncomponents, scale_ncomponents):
     channels = [64, 128, 256, 512, 512]
@@ -99,12 +99,14 @@ class GatedMobilenet(GatedChainNetwork):
             for _ in range(stage.nlayers):
                 if stage.ncomponents > 1:
                     # first conv stage is just a single conv block
-                    if i > 0:
+                    if stage.name == "dw_conv":
                         m, gated_m, in_shape = gatedDwConvBlock(stage.ncomponents, self.in_shape, self.in_channels, stage.nchannels, 
-                            kernel_size=stage.kernel_size, padding=stage.padding)
-                    else:
+                            kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding)
+                    elif stage.name == "conv":
                         m, gated_m, in_shape = gatedConvBlock(stage.ncomponents, self.in_shape, self.in_channels, stage.nchannels,
                             kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding, bias=True)
+                    else:
+                        raise Exception("un-recognized stage.name = {}".format(stage.name))
                     self.in_shape = in_shape
                     self.modules.extend(m)
                     self.tmp_gated_modules.extend(gated_m)
@@ -197,7 +199,7 @@ class GatedMobilenet(GatedChainNetwork):
                 x = m( x, g )
             else:
                 x = m( x )
-            print(x.size())
+            # print(x.size())
             log.debug( "network.x: %s", x )
         return x, gs
 
@@ -220,37 +222,38 @@ if __name__ == "__main__":
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
 
-    # order: "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
-    backbone_stages = [GatedStage(3, 2, 0, 1,  32, 4), GatedStage(3, 1, 1, 1,  64, 4),
-                       GatedStage(3, 2, 0, 1, 128, 4), GatedStage(3, 1, 1, 1, 128, 4),
-                       GatedStage(3, 2, 0, 1, 256, 4), GatedStage(3, 1, 1, 1, 256, 4),
-                       GatedStage(3, 1, 1, 1, 512, 4), GatedStage(3, 1, 2, 1, 512, 4),
-                       GatedStage(3, 1, 1, 4, 512, 4)]
+    # order: "name", "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
+    backbone_stages = [GatedStage("conv", 3, 2, 0, 1,  32, 4), GatedStage("dw_conv", 3, 1, 1, 1,  64, 4),
+                       GatedStage("dw_conv", 3, 2, 0, 1, 128, 4), GatedStage("dw_conv", 3, 1, 1, 1, 128, 4),
+                       GatedStage("dw_conv", 3, 2, 0, 1, 256, 4), GatedStage("dw_conv", 3, 1, 1, 1, 256, 4),
+                       GatedStage("dw_conv", 3, 1, 1, 1, 512, 4), GatedStage("dw_conv", 3, 1, 1, 1, 512, 4),
+                       GatedStage("dw_conv", 3, 1, 1, 4, 512, 4), GatedStage("conv", 3, 1, 1, 1,  256, 4),
+                       GatedStage("conv", 3, 1, 1, 1,  128, 4)]
 
-    initial_stage = [GatedStage(3, 1, 1, 3, 128, 4), GatedStage(1, 1, 0, 1, 512, 4),
-                     GatedStage(1, 1, 0, 1, 21, 1)] 
+    initial_stage = [GatedStage("conv", 3, 1, 1, 3, 128, 4), GatedStage("conv", 1, 1, 0, 1, 512, 4),
+                     GatedStage("conv", 1, 1, 0, 1, 21, 1)]
     
 
     fc_stage = GatedVggStage(1, 512, 2)
     gate_modules = []
 
-    for i, conv_stage in enumerate(backbone_stages):
+    for conv_stage in backbone_stages:
         for _ in range(conv_stage.nlayers):
             # each stage uses depthwise conv2d with two gated layers except for the first conv stage
-            if i > 0:
+            if conv_stage.name == "dw_conv":
                 count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
                 gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
             count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
             gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
 
-    for i, conv_stage in enumerate(initial_stage):
+    for conv_stage in initial_stage:
         for _ in range(conv_stage.nlayers):
             count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
             gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
 
-    for _ in range(fc_stage.nlayers):
-        count = strategy.PlusOneCount(strategy.UniformCount(fc_stage.ncomponents - 1))
-        gate_modules.append(strategy.NestedCountGate(fc_stage.ncomponents, count))
+    # for _ in range(fc_stage.nlayers):
+    #     count = strategy.PlusOneCount(strategy.UniformCount(fc_stage.ncomponents - 1))
+    #     gate_modules.append(strategy.NestedCountGate(fc_stage.ncomponents, count))
 
     gate = strategy.SequentialGate(gate_modules)
 
@@ -266,9 +269,10 @@ if __name__ == "__main__":
     # groups.extend( [gi] * fc_stage.nlayers )
     # gate = strategy.GroupedGate( gate_modules, groups )
 
-    net = GatedMobilenet(gate, (3, 32, 32), 21, backbone_stages, fc_stage, initial_stage, [])
-    print(net)
-    x = torch.rand( 2, 3, 32, 32)
+    net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
+    # print(net)
+    # summary(net, [(3, 368, 368), (1,)])
+    x = torch.rand( 2, 3, 368, 368)
     y = net(Variable(x), torch.tensor(0.5))
-    print( y )
+    print( y[0].size() )
     y[0].backward

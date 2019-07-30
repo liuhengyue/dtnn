@@ -140,7 +140,7 @@ class CPM_MobileNet(nn.Module):
 
 
 if __name__ == '__main__':
-    num_refinement_stages = 2
+    num_refinement_stages = 0
     net = CPM_MobileNet(num_refinement_stages)
     # print(net)
     summary(net, (3, 368, 368))

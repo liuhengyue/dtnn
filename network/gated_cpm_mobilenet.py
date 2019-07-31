@@ -17,56 +17,14 @@ log = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------------
 
-GatedVggStage = namedtuple("GatedVggStage",
-                           ["nlayers", "nchannels", "ncomponents"])
-
 GatedStage = namedtuple("GatedStage",
                            ["name", "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"])
 
-def _Vgg_params(nlayers, nconv_stages, ncomponents, scale_ncomponents):
-    channels = [64, 128, 256, 512, 512]
-    assert (0 < nconv_stages <= len(channels))
-    base = channels[0]
-    fc_layers = 2
-    fc_channels = 4096
-    conv_params = []
-    for i in range(len(channels)):
-        scale = channels[i] // base if scale_ncomponents else 1
-        conv_params.append(
-            GatedVggStage(nlayers[i], channels[i], scale * ncomponents))
-    fc_scale = fc_channels // base if scale_ncomponents else 1
-    fc_params = GatedVggStage(fc_layers, fc_channels, fc_scale * ncomponents)
-    return conv_params[:nconv_stages] + [fc_params]
-
-
-def VggA(nconv_stages, ncomponents, scale_ncomponents=False):
-    return _Vgg_params([1, 1, 2, 2, 2], nconv_stages, ncomponents, scale_ncomponents)
-
-
-def VggB(nconv_stages, ncomponents, scale_ncomponents=False):
-    return _Vgg_params([2, 2, 2, 2, 2], nconv_stages, ncomponents, scale_ncomponents)
-
-
-def VggD(nconv_stages, ncomponents, scale_ncomponents=False):
-    return _Vgg_params([2, 2, 3, 3, 3], nconv_stages, ncomponents, scale_ncomponents)
-
-
-def VggE(nconv_stages, ncomponents, scale_ncomponents=False):
-    return _Vgg_params([2, 2, 4, 4, 4], nconv_stages, ncomponents, scale_ncomponents)
 
 
 # ----------------------------------------------------------------------------
 
 class GatedMobilenet(GatedChainNetwork):
-    """ A parameterizable VGG-style architecture.
-
-    @article{simonyan2014very,
-      title={Very deep convolutional networks for large-scale image recognition},
-      author={Simonyan, Karen and Zisserman, Andrew},
-      journal={arXiv preprint arXiv:1409.1556},
-      year={2014}
-    }
-    """
 
     def __init__(self, gate, in_shape, nclasses, bb_stages, fc_stage,
                  initial_stage, refine_stage, batchnorm=False, dropout=0.5, **kwargs):
@@ -77,7 +35,7 @@ class GatedMobilenet(GatedChainNetwork):
         self.initial_stage = initial_stage
         self.refine_stage = refine_stage
         self.nclasses = nclasses
-        self.batchnorm = batchnorm
+        self.batchnorm = batchnorm # batch norm already defined in modules/conv.py
         self.dropout = dropout
         self.in_shape = in_shape
         self.in_channels = in_shape[0]
@@ -159,49 +117,6 @@ class GatedMobilenet(GatedChainNetwork):
     def __set_classification_layer(self):
         self.modules.append(FullyConnected(self.in_channels, self.nclasses))
 
-    def forward( self, x, u=None ):
-        """
-        Returns:
-          `(y, gs)` where:
-            `y`  : Network output
-            `gs` : `[(g, info)]` List of things returned from `self.gate` in same
-              order as `self.gated_modules`. `g` is the actual gate matrix, and
-              `info` is any additional things returned (or `None`).
-        """
-        def expand( gout ):
-          if isinstance(gout, tuple):
-            g, info = gout # Fail fast on unexpected extra outputs
-            return (g, info)
-          else:
-            return (gout, None)
-        
-        gs = []
-        # FIXME: This is a hack for FasterRCNN integration. Find a better way.
-        if u is None:
-          self.gate.set_control( self._u )
-        else:
-          self.gate.set_control( u )
-        # TODO: With the current architecture, set_control() has to happen before
-        # reset() in case reset() needs to run the gate network. Should `u` be a
-        # second parameter to reset()? Should it be an argument to gate() as well?
-        # How do we support gate networks that require the outputs of arbitrary
-        # layers in the data network in a modular way?
-        self.gate.reset( x )
-        for m in self.fn:
-            # print(type(m))
-            if isinstance(m, GatedModule):
-                self.gate.next_module( m )
-                g, info = expand( self.gate( x ) )
-                gs.append( (g, info) )
-                if self.normalize:
-                    g = self._normalize( g )
-                self._log_gbar( g )
-                x = m( x, g )
-            else:
-                x = m( x )
-            # print(x.size())
-            log.debug( "network.x: %s", x )
-        return x, gs
 
 
 # ----------------------------------------------------------------------------
@@ -234,7 +149,7 @@ if __name__ == "__main__":
                      GatedStage("conv", 1, 1, 0, 1, 21, 1)]
     
 
-    fc_stage = GatedVggStage(1, 512, 2)
+    fc_stage = GatedStage("fc", 0, 0, 0, 1, 512, 2)
     gate_modules = []
 
     for conv_stage in backbone_stages:

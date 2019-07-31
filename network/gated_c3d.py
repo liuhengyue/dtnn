@@ -109,9 +109,6 @@ class GatedC3D(GatedChainNetwork):
                         self.modules.append(nn.BatchNorm3d(stage.nchannels))
                     self.in_channels = stage.nchannels
                 elif stage.name == "pool":
-                    # add maxpool TODO: better structure
-                    pool_kernel_size = (1, 2, 2) if i == 0 else 2
-                    pool_stride = (1, 2, 2) if i == 0 else 2
                     pool, in_shape = Maxpool3dWrapper(self.in_shape, kernel_size=stage.kernel_size, stride=stage.stride)
                     self.modules.extend(pool)
                     self.in_shape = in_shape
@@ -144,49 +141,6 @@ class GatedC3D(GatedChainNetwork):
     def __set_classification_layer(self):
         self.modules.append(FullyConnected(self.in_channels, self.nclasses))
 
-    def forward( self, x, u=None ):
-        """
-        Returns:
-          `(y, gs)` where:
-            `y`  : Network output
-            `gs` : `[(g, info)]` List of things returned from `self.gate` in same
-              order as `self.gated_modules`. `g` is the actual gate matrix, and
-              `info` is any additional things returned (or `None`).
-        """
-        def expand( gout ):
-          if isinstance(gout, tuple):
-            g, info = gout # Fail fast on unexpected extra outputs
-            return (g, info)
-          else:
-            return (gout, None)
-        
-        gs = []
-        # FIXME: This is a hack for FasterRCNN integration. Find a better way.
-        if u is None:
-          self.gate.set_control( self._u )
-        else:
-          self.gate.set_control( u )
-        # TODO: With the current architecture, set_control() has to happen before
-        # reset() in case reset() needs to run the gate network. Should `u` be a
-        # second parameter to reset()? Should it be an argument to gate() as well?
-        # How do we support gate networks that require the outputs of arbitrary
-        # layers in the data network in a modular way?
-        self.gate.reset( x )
-        for m in self.fn:
-            # print(type(m))
-            if isinstance(m, GatedModule):
-                self.gate.next_module( m )
-                g, info = expand( self.gate( x ) )
-                gs.append( (g, info) )
-                if self.normalize:
-                    g = self._normalize( g )
-                self._log_gbar( g )
-                x = m( x, g )
-            else:
-                x = m( x )
-            print(x.size())
-            log.debug( "network.x: %s", x )
-        return x, gs
 
 
 # ----------------------------------------------------------------------------

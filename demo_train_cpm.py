@@ -4,46 +4,21 @@ from torch.utils.data import DataLoader
 from torchsummary import summary
 import nnsearch.logging as mylog
 import logging
-import nnsearch.pytorch.gated.strategy as strategy
-from network.gated_cpm_mobilenet import GatedMobilenet, GatedStage, GatedVggStage
+from network.gated_cpm_mobilenet import GatedMobilenet, GatedStage
 # dataset
 import configparser
 from dataloaders.cmu_hand_data import CMUHand
-# model load/save
-import os
-import shutil
-import glob
-import contextlib
 
-def make_sequentialGate(backbone_stages, initial_stage):
-    gate_modules = []
+from modules.utils import *
 
-    for conv_stage in backbone_stages:
-        for _ in range(conv_stage.nlayers):
-            # each stage uses depthwise conv2d with two gated layers except for the first conv stage
-            if conv_stage.name == "dw_conv":
-                count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-                gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
-            count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-            gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
 
-    for conv_stage in initial_stage:
-        for _ in range(conv_stage.nlayers):
-            count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-            gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
-
-    # for _ in range(fc_stage.nlayers):
-    #     count = strategy.PlusOneCount(strategy.UniformCount(fc_stage.ncomponents - 1))
-    #     gate_modules.append(strategy.NestedCountGate(fc_stage.ncomponents, count))
-
-    return strategy.SequentialGate(gate_modules)
 
 if __name__ == "__main__":
     # Logger setup
     mylog.add_log_level("VERBOSE", logging.INFO - 5)
     mylog.add_log_level("MICRO", logging.DEBUG - 5)
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO)
     # Need to set encoding or Windows will choke on ellipsis character in
     # PyTorch tensor formatting
     handler = logging.FileHandler("logs/demo.log", "w", "utf-8")
@@ -67,6 +42,7 @@ if __name__ == "__main__":
 
 
     net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
+    gate_network = net.gate
     # print(net)
     # summary(net, [(3, 32, 32), (1,)])
 
@@ -75,18 +51,24 @@ if __name__ == "__main__":
     # y = net(Variable(x), torch.tensor(0.5))
     # print(y)
     # y[0].backward
-    ### GPU support
+    ### GPU support ###
+    # right now, it can only work on single gpu with number 0, parallel not working
+    # gate and inputs are on different gpus
     cuda = torch.cuda.is_available()
-    device_ids = [1, 2]
-    if cuda and len(device_ids > 1):
-        net = torch.nn.DataParallel(net, device_ids=device_ids)
+    device_ids = [0]
+
+    if cuda:
+        if len(device_ids) > 1:
+            net = torch.nn.DataParallel(net, device_ids=device_ids)
+        else:
+            net = net.cuda(device_ids[0])
 
     ######################### dataset #######################
     config = configparser.ConfigParser()
     config.read('conf.text')
     train_data_dir = config.get('data', 'train_data_dir')
     train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 2
+    batch_size = 24
     train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
@@ -98,69 +80,26 @@ if __name__ == "__main__":
     lambda_gate = 1.0
     learning_rate = 0.01
     nclasses = 21
-    complexity_weights = []
-    for (m, in_shape) in net.gated_modules:
-        complexity_weights.append(1.0) # uniform
-    lambda_gate = lambda_gate * math.log(nclasses)
-    optimizer = optim.SGD( net.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4 )
-    gate_network = net.gate
-    def uniform_gate():
-        def f(inputs, labels):
-            # return Variable( torch.rand(inputs.size(0), 1).type_as(inputs) )
-            umin = 0
-            r = 1.0 - umin
-            return Variable(umin + r * torch.rand(inputs.size(0)).type_as(inputs))
+    # complexity_weights = []
+    # for (m, in_shape) in net.gated_modules:
+    #     complexity_weights.append(1.0) # uniform
+    # lambda_gate = lambda_gate * math.log(nclasses)
+    # optimizer = optim.SGD( net.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4 )
+    # cpm default optim
+    optimizer = optim.Adam(params=net.parameters(), lr=learning_rate, betas=(0.5, 0.999))
 
-        return f
     gate_control = uniform_gate()
-    def penalty_fn( G, u ):
-      return (1 - u) * G
+
     gate_loss = glearner.usage_gate_loss( penalty_fn)
     criterion = torch.nn.MSELoss(reduction='mean')
     learner = glearner.GatedDataPathLearner(net, optimizer, learning_rate,
                                             gate_network, gate_control, criterion=criterion)
 
-    ### save, load, checkpoint
-    def model_file(directory, epoch, suffix=""):
-        filename = "model_{}.pkl{}".format(epoch, suffix)
-        return os.path.join(directory, filename)
-
-
-    def latest_checkpoints(directory):
-        return glob.glob(os.path.join(directory, "model_*.pkl.latest"))
-
-    def save_model(network, output, elapsed_epochs, force_persist=False):
-        # Save current model to tmp name
-        with open(model_file(output, elapsed_epochs, ".tmp"), "wb") as fout:
-            if isinstance(network, torch.nn.DataParallel):
-                # See: https://discuss.pytorch.org/t/solved-keyerror-unexpected-key-module-encoder-embedding-weight-in-state-dict/1686/19
-                torch.save(network.module.state_dict(), fout)
-            else:
-                torch.save(network.state_dict(), fout)
-        # Remove previous ".latest" checkpoints
-        for f in latest_checkpoints(output):
-            with contextlib.suppress(FileNotFoundError):
-                os.remove(f)
-        # Move tmp file to latest
-        os.rename(model_file(output, elapsed_epochs, ".tmp"),
-                  model_file(output, elapsed_epochs, ".latest"))
-        checkpoint_interval = 1
-        if force_persist or (elapsed_epochs % checkpoint_interval == 0):
-            shutil.copy2(model_file(output, elapsed_epochs, ".latest"),
-                         model_file(output, elapsed_epochs))
-
-
-    def checkpoint(elapsed_epochs, learner, force_eval=False):
-        save_model(elapsed_epochs, force_persist=force_eval)
-        # if force_eval or (elapsed_epochs % args.checkpoint_interval == 0):
-        #     evaluate(elapsed_epochs, learner)
-        # if args.aws_sync is not None:
-        #     os.system(args.aws_sync)
 
     ######################### train #######################
 
     start = 0
-    train_epochs = 1
+    train_epochs = 500
     seed = 1
     for epoch in range(start, start + train_epochs):
         print("==== Train: Epoch %s: seed=%s", epoch, seed)
@@ -169,14 +108,14 @@ if __name__ == "__main__":
         learner.start_train(epoch, seed)
         for i, data in enumerate(train_dataset):
             inputs, labels, _, _ = data
-            inputs = inputs.cuda()
-            labels = labels.cuda()
+            inputs = inputs.cuda(device_ids[0])
+            labels = labels.cuda(device_ids[0])
             yhat = learner.forward(i, inputs, labels)
             learner.backward(i, yhat, labels)
 
             batch_idx += 1
         learner.finish_train(epoch)
-        checkpoint(epoch + 1, learner)
+        checkpoint(net, "ckpt/gated_cpm", epoch + 1, learner)
         # checkpoint(epoch + 1, learner)
         # Save final model if we haven't done so already
     # if args.train_epochs % args.checkpoint_interval != 0:

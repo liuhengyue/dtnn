@@ -9,26 +9,12 @@ import nnsearch.pytorch.gated.strategy as strategy
 from nnsearch.pytorch.gated.module import GatedChainNetwork
 from network.gated_cpm_mobilenet import GatedMobilenet
 from network.gated_c3d import GatedC3D, GatedStage
+from modules.utils import *
 # dataset
 import configparser
 from dataloaders.cmu_hand_data import CMUHand
 
 # order: "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
-
-
-
-def make_sequentialGate(dict_stages):
-    gate_modules = []
-    for key, block_stages in dict_stages.items():
-        for stage in block_stages:
-            if stage.name in ["dw_conv", "conv", "fc"]:
-                for _ in range(stage.nlayers):
-                    count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1))
-                    gate_modules.append(strategy.NestedCountGate(stage.ncomponents, count))
-                    if stage.name == "dw_conv":
-                        count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1))
-                        gate_modules.append(strategy.NestedCountGate(stage.ncomponents, count))
-    return strategy.SequentialGate(gate_modules)
 
 def make_heatmap_net():
     # it should return a dict as the input to GestureNet
@@ -80,12 +66,26 @@ class GestureNet():
         self.heatmap_net = GatedMobilenet(heatmap_net_pars["gate"], heatmap_net_pars["in_shape"], heatmap_net_pars["num_classes"],
                                           heatmap_net_pars["backbone"], None, heatmap_net_pars["initial"], [], dropout=dropout)
 
+        self.load_pretrained_weights()
+        self.heatmap_net.eval()
+
         self.c3d_net = GatedC3D(c3d_pars["gate"], c3d_pars["in_shape"],
                                           c3d_pars["num_classes"],
                                           c3d_pars["c3d"], c3d_pars["fc"],
                                           dropout=dropout)
 
 
+
+    def load_pretrained_weights(self):
+        filename = model_file("ckpt/", 100, ".latest")
+        with open(filename, "rb") as f:
+            state_dict = torch.load(f, map_location="cpu")
+            load_model(self.heatmap_net, state_dict,
+                       load_gate=True, strict=True)
+        # set required grad
+        for name, param in self.heatmap_net.named_parameters():
+            # print(name)
+            param.requires_grad = False
 
 
     def get_heatmaps(self, x, u1=None):
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     mylog.add_log_level("VERBOSE", logging.INFO - 5)
     mylog.add_log_level("MICRO", logging.DEBUG - 5)
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO)
     # Need to set encoding or Windows will choke on ellipsis character in
     # PyTorch tensor formatting
     handler = logging.FileHandler("logs/demo_c3d.log", "w", "utf-8")
@@ -170,17 +170,9 @@ if __name__ == "__main__":
     lambda_gate = lambda_gate * math.log(nclasses)
     optimizer = optim.SGD( net.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4 )
     gate_network = net.gate
-    def uniform_gate():
-        def f(inputs, labels):
-            # return Variable( torch.rand(inputs.size(0), 1).type_as(inputs) )
-            umin = 0
-            r = 1.0 - umin
-            return Variable(umin + r * torch.rand(inputs.size(0)).type_as(inputs))
 
-        return f
     gate_control = uniform_gate()
-    def penalty_fn( G, u ):
-      return (1 - u) * G
+
     gate_loss = glearner.usage_gate_loss( penalty_fn)
     criterion = None
     learner = glearner.GatedDataPathLearner(net, optimizer, learning_rate,

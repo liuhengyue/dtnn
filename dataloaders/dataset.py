@@ -8,8 +8,10 @@ import torch
 import cv2
 import numpy as np
 from torch.utils.data import Dataset
-ROOT_DIR = os.path.abspath("./")
-sys.path.insert(0, ROOT_DIR)
+# check current python path
+# ROOT_DIR = os.path.abspath("./")
+# sys.path.insert(0, ROOT_DIR)
+# print(sys.path)
 from mypath import Path
 from tqdm import tqdm
 import multiprocessing
@@ -28,7 +30,7 @@ class VideoDataset(Dataset):
             preprocess (bool): Determines whether to preprocess dataset. Default is False.
     """
 
-    def __init__(self, dataset='ucf101', split='train', clip_len=16, preprocess=False):
+    def __init__(self, dataset='ucf101', split='train', clip_len=16, preprocess=False, subset=[]):
         self.root_dir, self.output_dir = Path.db_dir(dataset)
         folder = os.path.join(self.output_dir, split)
         self.clip_len = clip_len
@@ -51,11 +53,14 @@ class VideoDataset(Dataset):
             else:
                 self.preprocess()
 
+        # check argument 'subset'  if use part of the classes
+        if len(subset) > 0:
+            print("Using a subset [{}] of dataset: {}".format(len(subset), subset))
         # Obtain all the filenames of files inside all the class folders
         # Going through each class folder one at a time
         self.fnames, labels = [], []
         for label in sorted(os.listdir(folder)):
-            if label == ".DS_Store":
+            if label in [".DS_Store"] + subset:
                 continue
             for fname in os.listdir(os.path.join(folder, label)):
                 self.fnames.append(os.path.join(folder, label, fname))
@@ -63,9 +68,10 @@ class VideoDataset(Dataset):
 
         assert len(labels) == len(self.fnames)
         print('Number of {} videos: {:d}'.format(split, len(self.fnames)))
-
+        self.class_names = sorted(set(labels))
+        print('Double checked using {} classes: {}'.format(len(self.class_names), self.class_names))
         # Prepare a mapping between the label names (strings) and indices (ints)
-        self.label2index = {label: index for index, label in enumerate(sorted(set(labels)))}
+        self.label2index = {label: index for index, label in enumerate(self.class_names)}
         # Convert the list of label names into an array of label indices
         self.label_array = np.array([self.label2index[label] for label in labels], dtype=int)
 
@@ -398,7 +404,8 @@ class VideoDataset(Dataset):
 
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
-    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=8, preprocess=True)
+    subset = ['No gesture', 'Thumb Down', 'Thumb Up', 'Swiping Left', 'Swiping Right']
+    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=2, preprocess=False, subset=subset)
     train_loader = DataLoader(train_data, batch_size=2, shuffle=True, num_workers=1)
 
     for i, sample in enumerate(train_loader):

@@ -90,7 +90,7 @@ class Learner:
     with contextlib.ExitStack() as ctx:
       if not self.network.training:
         ctx.enter_context( torch.no_grad() )
-      result = self._network_forward( Variable(inputs) )
+      result = self._network_forward( inputs ) # removed variable
       if isinstance(result, tuple):
         yhat, *self.rest = result
       else:

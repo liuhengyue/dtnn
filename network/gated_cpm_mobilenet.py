@@ -11,6 +11,7 @@ from nnsearch.pytorch.gated.module import (BlockGatedConv2d, BlockGatedFullyConn
 from modules.conv import gatedConvBlock, gatedDwConvBlock, gated3dConvBlock
 import nnsearch.pytorch.gated.strategy as strategy
 from nnsearch.pytorch.modules import FullyConnected
+from modules.utils import *
 import nnsearch.pytorch.torchx as torchx
 from torchsummary import summary
 log = logging.getLogger(__name__)
@@ -95,27 +96,10 @@ class GatedMobilenet(GatedChainNetwork):
                 self.in_channels = stage.nchannels
 
 
-    def __set_fc(self):
-        # FC layers
-        self.in_shape = tuple([self.in_channels] + list(self.in_shape[1:]))
-        self.in_channels = reduce(operator.mul, self.in_shape)
-        for _ in range(self.fc_stage.nlayers):
-            if self.fc_stage.ncomponents > 1:
-                m = BlockGatedFullyConnected(self.fc_stage.ncomponents,
-                                             self.in_channels, self.fc_stage.nchannels)
-                self.modules.append(m)
-                # self.gated_modules.append( (m, in_channels) )
-                self.tmp_gated_modules.append((m, self.in_channels))
-            else:
-                self.modules.append(FullyConnected(
-                    self.in_channels, self.fc_stage.nchannels))
-            self.modules.append(nn.ReLU())
-            if self.dropout > 0:
-                self.modules.append(nn.Dropout(self.dropout))
-            self.in_channels = self.fc_stage.nchannels
 
-    def __set_classification_layer(self):
-        self.modules.append(FullyConnected(self.in_channels, self.nclasses))
+    # def forward(self, x, u=None):
+    #     x_output, g = super().forward(x, u)
+    #     return x_output
 
 
 
@@ -149,28 +133,11 @@ if __name__ == "__main__":
                      GatedStage("conv", 1, 1, 0, 1, 21, 1)]
     
 
-    fc_stage = GatedStage("fc", 0, 0, 0, 1, 512, 2)
-    gate_modules = []
+    # fc_stage = GatedStage("fc", 0, 0, 0, 1, 512, 2)
+    full_stage = {"backbone_stages": backbone_stages, "initial": initial_stage}
 
-    for conv_stage in backbone_stages:
-        for _ in range(conv_stage.nlayers):
-            # each stage uses depthwise conv2d with two gated layers except for the first conv stage
-            if conv_stage.name == "dw_conv":
-                count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-                gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
-            count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-            gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
 
-    for conv_stage in initial_stage:
-        for _ in range(conv_stage.nlayers):
-            count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-            gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
-
-    # for _ in range(fc_stage.nlayers):
-    #     count = strategy.PlusOneCount(strategy.UniformCount(fc_stage.ncomponents - 1))
-    #     gate_modules.append(strategy.NestedCountGate(fc_stage.ncomponents, count))
-
-    gate = strategy.SequentialGate(gate_modules)
+    gate = make_sequentialGate(full_stage)
 
     # groups = []
     # gi = 0
@@ -185,9 +152,10 @@ if __name__ == "__main__":
     # gate = strategy.GroupedGate( gate_modules, groups )
 
     net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
-    # print(net)
+    print(net)
     # summary(net, [(3, 368, 368), (1,)])
     x = torch.rand( 2, 3, 368, 368)
     y = net(Variable(x), torch.tensor(0.5))
-    print( y[0].size() )
-    y[0].backward
+    print(y.size())
+    # print( y[0].size() )
+    # y[0].backward

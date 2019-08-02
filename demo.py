@@ -37,20 +37,20 @@ if __name__ == "__main__":
                      GatedStage("conv", 1, 1, 0, 1, 21, 1)]
 
     # fc_stage = GatedVggStage(1, 512, 2)
+    full_stage = {"backbone_stages": backbone_stages, "initial": initial_stage}
+    gate = make_sequentialGate(full_stage)
 
-    gate = make_sequentialGate(backbone_stages, initial_stage)
+
 
 
     net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
     gate_network = net.gate
 
-    filename = model_file("ckpt/", 50)
-    print(net.state_dict()["fn.87.bias"])
+    filename = model_file("ckpt/", 100, ".latest")
     with open( filename, "rb" ) as f:
       state_dict = torch.load(f, map_location="cpu")
       load_model( net, state_dict,
                   load_gate=True, strict=True)
-      print(net.state_dict()["fn.87.bias"])
       # print(state_dict.keys())
     net.eval()
     # test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'

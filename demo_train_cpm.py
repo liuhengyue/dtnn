@@ -77,8 +77,8 @@ if __name__ == "__main__":
     import math
     import torch.optim as optim
     import nnsearch.pytorch.gated.learner as glearner
-    lambda_gate = 1.0
-    learning_rate = 0.01
+    # lambda_gate = 1.0
+    learning_rate = config.getfloat('training', 'learning_rate')
     nclasses = 21
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -99,7 +99,7 @@ if __name__ == "__main__":
     ######################### train #######################
 
     start = 0
-    train_epochs = 500
+    train_epochs = 100
     seed = 1
     for epoch in range(start, start + train_epochs):
         print("==== Train: Epoch %s: seed=%s", epoch, seed)

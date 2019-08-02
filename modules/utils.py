@@ -102,27 +102,17 @@ def load_model(self, state_dict, load_gate=True, strict=True):
         if len(missing) > 0:
             raise KeyError('missing keys in state_dict: "{}"'.format(missing))
 
-def make_sequentialGate(backbone_stages, initial_stage):
+def make_sequentialGate(dict_stages):
     gate_modules = []
-
-    for conv_stage in backbone_stages:
-        for _ in range(conv_stage.nlayers):
-            # each stage uses depthwise conv2d with two gated layers except for the first conv stage
-            if conv_stage.name == "dw_conv":
-                count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-                gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
-            count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-            gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
-
-    for conv_stage in initial_stage:
-        for _ in range(conv_stage.nlayers):
-            count = strategy.PlusOneCount(strategy.UniformCount(conv_stage.ncomponents - 1))
-            gate_modules.append(strategy.NestedCountGate(conv_stage.ncomponents, count))
-
-    # for _ in range(fc_stage.nlayers):
-    #     count = strategy.PlusOneCount(strategy.UniformCount(fc_stage.ncomponents - 1))
-    #     gate_modules.append(strategy.NestedCountGate(fc_stage.ncomponents, count))
-
+    for key, block_stages in dict_stages.items():
+        for stage in block_stages:
+            if stage.name in ["dw_conv", "conv", "fc"]:
+                for _ in range(stage.nlayers):
+                    count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1))
+                    gate_modules.append(strategy.NestedCountGate(stage.ncomponents, count))
+                    if stage.name == "dw_conv":
+                        count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1))
+                        gate_modules.append(strategy.NestedCountGate(stage.ncomponents, count))
     return strategy.SequentialGate(gate_modules)
 
 
@@ -169,7 +159,7 @@ def image_test(net, image_path, gated=False):
     # frame = Variable(frame)
     # print(frame.size())
     if gated:
-        u = torch.tensor(0.5)
+        u = torch.tensor(1.0)
         # right now just one stage
         pred_6, _ = net(frame, u)
         pred = pred_6[0].cpu().detach().numpy()

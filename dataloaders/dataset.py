@@ -60,11 +60,12 @@ class VideoDataset(Dataset):
         # Going through each class folder one at a time
         self.fnames, labels = [], []
         for label in sorted(os.listdir(folder)):
-            if label in [".DS_Store"] + subset:
+            if label == ".DS_Store":
                 continue
-            for fname in os.listdir(os.path.join(folder, label)):
-                self.fnames.append(os.path.join(folder, label, fname))
-                labels.append(label)
+            if label in subset:
+                for fname in os.listdir(os.path.join(folder, label)):
+                    self.fnames.append(os.path.join(folder, label, fname))
+                    labels.append(label)
 
         assert len(labels) == len(self.fnames)
         print('Number of {} videos: {:d}'.format(split, len(self.fnames)))

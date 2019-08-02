@@ -154,7 +154,8 @@ if __name__ == "__main__":
 
     # gesture dataset
     from dataloaders.dataset import VideoDataset
-    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=8)
+    subset = ['No gesture', 'Thumb Down', 'Thumb Up', 'Swiping Left', 'Swiping Right']
+    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=8, subset=subset)
     train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     ######################### learner #######################
     # GatePolicyLearner

@@ -575,7 +575,7 @@ if __name__ == "__main__":
     strategy for two-phase gated network training.
     """
     def __init__( self ):
-      self.criterion = nn.CrossEntropyLoss( reduce=False )
+      self.criterion = nn.CrossEntropyLoss( reduction='none' )
       
     def start_train( self, epoch_idx, seed ):
       network.train()

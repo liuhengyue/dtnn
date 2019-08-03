@@ -108,8 +108,9 @@ if __name__ == "__main__":
         learner.start_train(epoch, seed)
         for i, data in enumerate(train_dataset):
             inputs, labels, _, _ = data
-            inputs = inputs.cuda(device_ids[0])
-            labels = labels.cuda(device_ids[0])
+            if cuda:
+                inputs = inputs.cuda(device_ids[0])
+                labels = labels.cuda(device_ids[0])
             yhat = learner.forward(i, inputs, labels)
             learner.backward(i, yhat, labels)
 

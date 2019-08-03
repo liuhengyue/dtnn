@@ -20,7 +20,7 @@ class Learner:
     self.network = network
     self.optimizer = optimizer
     self.learning_rate = learning_rate
-    self.criterion = nn.CrossEntropyLoss( reduce=False ) if criterion == None else criterion
+    self.criterion = nn.CrossEntropyLoss( reduction='none' ) if criterion == None else criterion
     
     self.histogram_bins = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]
     self.grad_histogram = None

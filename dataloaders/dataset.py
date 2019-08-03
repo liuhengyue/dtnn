@@ -88,6 +88,9 @@ class VideoDataset(Dataset):
                     for id, label in enumerate(sorted(self.label2index)):
                         f.writelines(str(id+1) + ' ' + label + '\n')
         elif dataset == '20bn-jester':
+            # re log the label mapping
+            if len(subset) > 0 and os.path.exists('dataloaders/20bn-jester_labels.txt'):
+                os.remove('dataloaders/20bn-jester_labels.txt')
             if not os.path.exists('dataloaders/20bn-jester_labels.txt'):
                 with open('dataloaders/20bn-jester_labels.txt', 'w') as f:
                     for id, label in enumerate(sorted(self.label2index)):

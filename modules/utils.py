@@ -57,7 +57,7 @@ def save_model(network, output, elapsed_epochs, force_persist=False):
     # Move tmp file to latest
     os.rename(model_file(output, elapsed_epochs, ".tmp"),
               model_file(output, elapsed_epochs, ".latest"))
-    checkpoint_interval = 50
+    checkpoint_interval = 5
     if force_persist or (elapsed_epochs % checkpoint_interval == 0):
         shutil.copy2(model_file(output, elapsed_epochs, ".latest"),
                      model_file(output, elapsed_epochs))

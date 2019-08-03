@@ -84,7 +84,7 @@ class GatedC3D(GatedChainNetwork):
         
         self.__set_c3d_model()
         self.__set_fc()
-        # self.__set_classification_layer()
+        self.__set_classification_layer()
         # self.fn = nn.ModuleList( modules )
         # print("modules------------------",modules)
         # print("gated modules------------------", gated_modules)

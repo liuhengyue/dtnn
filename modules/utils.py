@@ -105,14 +105,22 @@ def load_model(self, state_dict, load_gate=True, strict=True):
 def make_sequentialGate(dict_stages):
     gate_modules = []
     for key, block_stages in dict_stages.items():
+        if key == "refinement":
+            continue
         for stage in block_stages:
             if stage.name in ["dw_conv", "conv", "fc"]:
-                for _ in range(stage.nlayers):
-                    count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1))
-                    gate_modules.append(strategy.NestedCountGate(stage.ncomponents, count))
-                    if stage.name == "dw_conv":
-                        count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1))
+                if stage.ncomponents > 1:
+                    for _ in range(stage.nlayers):
+                        # count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1)
+                        count = strategy.UniformCount(stage.ncomponents)
                         gate_modules.append(strategy.NestedCountGate(stage.ncomponents, count))
+                        if stage.name == "dw_conv":
+                            # count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1))
+                            count = strategy.UniformCount(stage.ncomponents)
+                            gate_modules.append(strategy.NestedCountGate(stage.ncomponents, count))
+
+    # test
+    # gate_modules.append(strategy.NestedCountGate(20, strategy.UniformCount(20)))
     return strategy.SequentialGate(gate_modules)
 
 

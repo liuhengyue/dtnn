@@ -309,7 +309,7 @@ class GatedChainNetwork(nn.Module):
     # layers in the data network in a modular way?
     self.gate.reset( x )
     for m in self.fn:
-      # print(type(m))
+      print(type(m))
       if isinstance(m, GatedModule):
         self.gate.next_module( m )
         g, info = expand( self.gate( x ) )
@@ -317,6 +317,7 @@ class GatedChainNetwork(nn.Module):
         if self.normalize:
           g = self._normalize( g )
         self._log_gbar( g )
+        # print(m, g)
         x = m( x, g )
       else:
         x = m( x )

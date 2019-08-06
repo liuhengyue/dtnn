@@ -37,8 +37,8 @@ if __name__ == "__main__":
                      GatedStage("conv", 1, 1, 0, 1, 21, 1)]
 
     # fc_stage = GatedVggStage(1, 512, 2)
-
-    gate = make_sequentialGate(backbone_stages, initial_stage)
+    full_stage = {"backbone_stages": backbone_stages, "initial": initial_stage}
+    gate = make_sequentialGate(full_stage)
 
 
     net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
@@ -55,6 +55,7 @@ if __name__ == "__main__":
     # right now, it can only work on single gpu with number 0, parallel not working
     # gate and inputs are on different gpus
     cuda = torch.cuda.is_available()
+    cuda = False
     device_ids = [0]
 
     if cuda:
@@ -68,7 +69,7 @@ if __name__ == "__main__":
     config.read('conf.text')
     train_data_dir = config.get('data', 'train_data_dir')
     train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 24
+    batch_size = 2
     train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
@@ -101,6 +102,7 @@ if __name__ == "__main__":
     start = 0
     train_epochs = 100
     seed = 1
+    n_refine_stages = 1
     for epoch in range(start, start + train_epochs):
         print("==== Train: Epoch %s: seed=%s", epoch, seed)
         batch_idx = 0
@@ -108,6 +110,7 @@ if __name__ == "__main__":
         learner.start_train(epoch, seed)
         for i, data in enumerate(train_dataset):
             inputs, labels, _, _ = data
+            labels = torch.stack([labels] * (n_refine_stages + 1), dim=1)
             if cuda:
                 inputs = inputs.cuda(device_ids[0])
                 labels = labels.cuda(device_ids[0])

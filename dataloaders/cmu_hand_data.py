@@ -83,7 +83,7 @@ class CMUHand(Dataset):
         """
 
         # get image
-        img = self.images_dir[idx]              # '.../001L0/L0005.jpg'
+        img = self.images_dir[idx]              # '.../001L0/L0005.jpg' note: not necessarily true for windows
         im = Image.open(img)                # read image
         w, h, c = np.asarray(im).shape      # weight 256 * height 256 * 3
         ratio_x = self.width / float(w)
@@ -98,8 +98,7 @@ class CMUHand(Dataset):
         # get label map
         if self.mode == "train":
             label_size = self.width // 8 - 1         # 45
-            
-            label_path = os.path.join(self.label_dir, img.split('/')[-1][:-4] + '.json')
+            label_path = os.path.join(self.label_dir, os.path.splitext(os.path.basename(img))[0] + '.json')
             labels = json.load(open(label_path))
 
             label = labels['hand_pts_crop']         # 0005  list       21 * 2

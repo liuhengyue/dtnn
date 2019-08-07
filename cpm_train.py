@@ -30,6 +30,8 @@ config = configparser.ConfigParser()
 config.read('conf.text')
 train_data_dir = config.get('data', 'train_data_dir')
 train_label_dir = config.get('data', 'train_label_dir')
+train_synth_data_dir = config.get('data', 'train_synth_data_dir')
+train_synth_label_dir = config.get('data', 'train_synth_label_dir')
 save_dir = config.get('data', 'save_dir')
 
 learning_rate = config.getfloat('training', 'learning_rate')
@@ -45,6 +47,7 @@ if not os.path.exists(save_dir):
 
 # *********************** Build dataset ***********************
 train_data = Mydata(data_dir=train_data_dir, label_dir=train_label_dir)
+# train_data = Mydata(data_dir=[train_data_dir,train_synth_data_dir], label_dir=[train_label_dir, train_synth_label_dir])
 print('Train dataset total number of images sequence is ----' + str(len(train_data)))
 
 # Data Loader
@@ -53,7 +56,7 @@ train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 # *********************** Build model ***********************
 
 # net = CPM(out_c=21)
-n_refine_stages = 2
+n_refine_stages = 3
 net = CPM_MobileNet(n_refine_stages)
 if cuda:
     print("Detected gpus.")
@@ -62,25 +65,25 @@ if cuda:
 
 
 if begin_epoch > 0:
-    save_path = 'ckpt/model_epoch' + str(begin_epoch) + '.pth'
+    save_path = os.path.join(save_dir, 'cpm_r' + str(n_refine_stages) + '_model_epoch' + str(begin_epoch) + '.pth')
     state_dict = torch.load(save_path, lambda storage, loc: storage)
-    # net.load_state_dict(state_dict)
-    if cuda:
-        net.load_state_dict(state_dict)
-    else:
-        # trained with DataParallel but test on cpu
-        single_state_dict = OrderedDict()
-        for k, v in state_dict.items():
-            name = k.replace("module.", "") # remove `module.`
-            single_state_dict[name] = v
-        # load params
-        net.load_state_dict(single_state_dict)
+    net.module.load_state_dict(state_dict)
+    # if cuda:
+    #     net.load_state_dict(state_dict)
+    # else:
+    #     # trained with DataParallel but test on cpu
+    #     single_state_dict = OrderedDict()
+    #     for k, v in state_dict.items():
+    #         name = k.replace("module.", "") # remove `module.`
+    #         single_state_dict[name] = v
+    #     # load params
+    #     net.load_state_dict(single_state_dict)
 
 
 def train():
     # *********************** initialize optimizer ***********************
     optimizer = optim.Adam(params=net.parameters(), lr=learning_rate, betas=(0.5, 0.999))
-    criterion = nn.MSELoss(reduction='mean')                       # loss function MSE average
+    criterion = nn.MSELoss(reduction='sum')                       # loss function MSE average
 
     net.train()
     for epoch in range(begin_epoch, epochs + 1):
@@ -114,10 +117,15 @@ def train():
                 print('--loss ' + str(float(loss.data.item())))
 
             if step % 200 == 0:
-                save_images(label_map[:, 2, :, :, :].cpu(), pred_6[:, 2, :, :, :].cpu(), step, epoch, imgs)
+                save_images(label_map[:, -1, :, :, :].cpu(), pred_6[:, -1, :, :, :].cpu(), step, epoch, imgs)
 
         if epoch % 5 == 0:
-            torch.save(net.state_dict(), os.path.join(save_dir, 'model_epoch{:d}.pth'.format(epoch)))
+            if isinstance(net, torch.nn.DataParallel):
+                torch.save(net.module.state_dict(),
+                           os.path.join(save_dir, 'cpm_r' + str(n_refine_stages) + '_model_epoch{:d}.pth'.format(epoch)))
+            else:
+                torch.save(net.state_dict(),
+                           os.path.join(save_dir, 'cpm_r' + str(n_refine_stages) + '_model_epoch{:d}.pth'.format(epoch)))
 
     print('train done!')
 

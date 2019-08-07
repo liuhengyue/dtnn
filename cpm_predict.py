@@ -202,7 +202,7 @@ def Tests_save_label(predict_heatmaps, step, imgs):
         json.dump(label_dict, open(save_dir_label + '/' + str(step) +
                                    '_' + im + '.json', 'w'), sort_keys=True, indent=4)
 
-def image_test(net, image_path):
+def image_test(net, image_path, draw=True):
     OUTPUT_STAGE = 2
     frame = Image.open(image_path)
     frame = frame.resize((368, 368))
@@ -213,10 +213,12 @@ def image_test(net, image_path):
     frame = Variable(frame)
     pred_6 = net(frame)
     pred = pred_6[0, OUTPUT_STAGE, :, :, :].cpu().detach().numpy()
+    if draw:
+        kpts = get_kpts(pred)
+        draw_paint(frame_copy, kpts)
     return pred
     # heatmap_image(img, pred)
-    # kpts = get_kpts(pred)
-    # draw_paint(frame_copy, kpts)
+
 
 
 # ************************************ Build dataset ************************************
@@ -229,44 +231,54 @@ test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=True)
 
 # Build model
 # net = CPM(21)
-net = CPM_MobileNet(2)
+n_refine_stages = 2
+net = CPM_MobileNet(n_refine_stages)
+cuda = False
 if cuda:
     net = net.cuda(device_ids[0])
     net = nn.DataParallel(net, device_ids=device_ids)  # multi-Gpu
 
-model_path = os.path.join('ckpt/model_epoch' + str(best_model)+'.pth')
+model_path = os.path.join("ckpt/", 'cpm_r' + str(n_refine_stages) + '_model_epoch{:d}.pth'.format(55))
 state_dict = torch.load(model_path, map_location=lambda storage, loc: storage)
-if cuda:
-    net.load_state_dict(state_dict)
-else:
-    # trained with DataParallel but test on cpu
-    single_state_dict = OrderedDict()
-    for k, v in state_dict.items():
-        name = k.replace("module.", "") # remove `module.`
-        single_state_dict[name] = v
-    # load params
-    net.load_state_dict(single_state_dict)
+net.load_state_dict(state_dict)
+# print(state_dict.keys())
+# if cuda:
+#     net.load_state_dict(state_dict)
+# else:
+#     # trained with DataParallel but test on cpu
+#     single_state_dict = OrderedDict()
+#     for k, v in state_dict.items():
+#         name = k.replace("module.", "") # remove `module.`
+#         single_state_dict[name] = v
+#     # load params
+#     net.load_state_dict(single_state_dict)
 
 
 # **************************************** test all images ****************************************
 
-print('********* test data *********')
-net.eval()
-test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'
-test_folder = 'dataset/20bn-jester-preprocessed/val/Stop Sign/234'
-save_base = os.path.join('visualization', os.path.basename(test_folder))
-if not os.path.exists(save_base):
-    os.mkdir(save_base)
-test_file_names = os.listdir(test_folder)
-for file_name in test_file_names:
-    img_dir = os.path.join(test_folder, file_name)
-    pred = image_test(net, img_dir)
-    save_dir = os.path.join(save_base, os.path.splitext(file_name)[0])
+# print('********* test data *********')
+# net.eval()
+# test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'
+# test_folder = 'dataset/20bn-jester-preprocessed/val/Stop Sign/234'
+# save_base = os.path.join('visualization', os.path.basename(test_folder))
+# if not os.path.exists(save_base):
+#     os.mkdir(save_base)
+# test_file_names = os.listdir(test_folder)
+# for file_name in test_file_names:
+#     img_dir = os.path.join(test_folder, file_name)
+#     pred = image_test(net, img_dir)
+#     save_dir = os.path.join(save_base, os.path.splitext(file_name)[0])
+#
+#     np2heatmap(pred, save_dir=save_dir)
 
-    np2heatmap(pred, save_dir=save_dir)
-# test_path = 'dataset/CMUHand/hand_labels/train/crop/001401452_01_r.jpg' 
+# **************************************** test single hand image ***********************************
+import glob, random
+test_folder = 'dataset/CMUHand/hand_labels/train/crop'
+image_paths = glob.glob(os.path.join(test_folder, "*"))
+test_path = random.choice(image_paths)
+# test_path = 'dataset/CMUHand/hand_labels/train/crop/015986866_01_r.jpg'
 # test_path = 'dataset/20bn-jester-preprocessed/val/Stop Sign/234/00027.jpg'
-# image_test(net, test_path)
+image_test(net, test_path)
 
 # OUTPUT_STAGE = 2
 

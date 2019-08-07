@@ -46,7 +46,7 @@ if __name__ == "__main__":
     net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
     gate_network = net.gate
 
-    filename = model_file("ckpt/", 100, ".latest")
+    filename = model_file("ckpt/gated_cpm/", 100, ".latest")
     with open( filename, "rb" ) as f:
       state_dict = torch.load(f, map_location="cpu")
       load_model( net, state_dict,

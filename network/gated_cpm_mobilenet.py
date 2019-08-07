@@ -72,7 +72,8 @@ class GatedMobilenet(nn.Module):
 
     def __init__(self, gate, in_shape, nclasses, bb_stages, fc_stage,
                  initial_stage, refine_stage, batchnorm=False, dropout=0.5,
-                 normalize=True, reverse_normalize=False, gbar_info=False, **kwargs):
+                 normalize=True, reverse_normalize=False, gbar_info=False,
+                 n_refine_stages=3, **kwargs):
         super().__init__()
         # self.gate = gate
         self.bb_stages = bb_stages
@@ -80,6 +81,7 @@ class GatedMobilenet(nn.Module):
         self.initial_stage = initial_stage
         self.refine_stage = refine_stage
         self.nclasses = nclasses
+        self.n_refine_stages = n_refine_stages
         self.batchnorm = batchnorm # batch norm already defined in modules/conv.py
         self.dropout = dropout
         self.in_shape = in_shape
@@ -233,9 +235,10 @@ class GatedMobilenet(nn.Module):
         self.initial_stage = initial_stage
 
     def __set_refinement_stage(self, num_channels=128):
-        stage = RefinementStage(num_channels + self.nclasses, num_channels, self.nclasses,
-                        False)
-        self.refinement_stages.append(stage)
+        for _ in range(self.n_refine_stages):
+            stage = RefinementStage(num_channels + self.nclasses, num_channels, self.nclasses,
+                            False)
+            self.refinement_stages.append(stage)
 
     # def forward(self, x, u=None):
     #     x_output, g = super().forward(x, u)
@@ -262,14 +265,14 @@ if __name__ == "__main__":
     root_logger.addHandler(handler)
 
     # order: "name", "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
-    backbone_stages = [GatedStage("conv", 3, 2, 0, 1,  32, 1), GatedStage("dw_conv", 3, 1, 1, 1,  64, 4),
-                       GatedStage("dw_conv", 3, 2, 0, 1, 128, 4), GatedStage("dw_conv", 3, 1, 1, 1, 128, 4),
-                       GatedStage("dw_conv", 3, 2, 0, 1, 256, 4), GatedStage("dw_conv", 3, 1, 1, 1, 256, 4),
-                       GatedStage("dw_conv", 3, 1, 1, 1, 512, 4), GatedStage("dw_conv", 3, 1, 1, 1, 512, 4),
-                       GatedStage("dw_conv", 3, 1, 1, 4, 512, 4), GatedStage("conv", 3, 1, 1, 1,  256, 4),
-                       GatedStage("conv", 3, 1, 1, 1,  128, 4)]
+    backbone_stages = [GatedStage("conv", 3, 2, 0, 1,  32, 1), GatedStage("dw_conv", 3, 1, 1, 1,  64, 2),
+                       GatedStage("dw_conv", 3, 2, 0, 1, 128, 2), GatedStage("dw_conv", 3, 1, 1, 1, 128, 2),
+                       GatedStage("dw_conv", 3, 2, 0, 1, 256, 2), GatedStage("dw_conv", 3, 1, 1, 1, 256, 2),
+                       GatedStage("dw_conv", 3, 1, 1, 1, 512, 2), GatedStage("dw_conv", 3, 1, 1, 1, 512, 2),
+                       GatedStage("dw_conv", 3, 1, 1, 4, 512, 2), GatedStage("conv", 3, 1, 1, 1,  256, 2),
+                       GatedStage("conv", 3, 1, 1, 1,  128, 2)]
 
-    initial_stage = [GatedStage("conv", 3, 1, 1, 3, 128, 4), GatedStage("conv", 1, 1, 0, 1, 512, 4),
+    initial_stage = [GatedStage("conv", 3, 1, 1, 3, 128, 2), GatedStage("conv", 1, 1, 0, 1, 512, 2),
                      GatedStage("conv", 1, 1, 0, 1, 21, 1)]
     # TODO: not implemented yet
     refine_stage = [1]

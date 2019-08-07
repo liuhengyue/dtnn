@@ -26,22 +26,22 @@ if __name__ == "__main__":
     root_logger.addHandler(handler)
 
     # order: "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
-    backbone_stages = [GatedStage("conv", 3, 2, 0, 1, 32, 4), GatedStage("dw_conv", 3, 1, 1, 1, 64, 4),
-                       GatedStage("dw_conv", 3, 2, 0, 1, 128, 4), GatedStage("dw_conv", 3, 1, 1, 1, 128, 4),
-                       GatedStage("dw_conv", 3, 2, 0, 1, 256, 4), GatedStage("dw_conv", 3, 1, 1, 1, 256, 4),
-                       GatedStage("dw_conv", 3, 1, 1, 1, 512, 4), GatedStage("dw_conv", 3, 1, 1, 1, 512, 4),
-                       GatedStage("dw_conv", 3, 1, 1, 4, 512, 4), GatedStage("conv", 3, 1, 1, 1, 256, 4),
-                       GatedStage("conv", 3, 1, 1, 1, 128, 4)]
+    backbone_stages = [GatedStage("conv", 3, 2, 0, 1, 32, 1), GatedStage("dw_conv", 3, 1, 1, 1, 64, 2),
+                       GatedStage("dw_conv", 3, 2, 0, 1, 128, 2), GatedStage("dw_conv", 3, 1, 1, 1, 128, 2),
+                       GatedStage("dw_conv", 3, 2, 0, 1, 256, 2), GatedStage("dw_conv", 3, 1, 1, 1, 256, 2),
+                       GatedStage("dw_conv", 3, 1, 1, 1, 512, 2), GatedStage("dw_conv", 3, 1, 1, 1, 512, 2),
+                       GatedStage("dw_conv", 3, 1, 1, 4, 512, 2), GatedStage("conv", 3, 1, 1, 1, 256, 2),
+                       GatedStage("conv", 3, 1, 1, 1, 128, 2)]
 
-    initial_stage = [GatedStage("conv", 3, 1, 1, 3, 128, 4), GatedStage("conv", 1, 1, 0, 1, 512, 4),
+    initial_stage = [GatedStage("conv", 3, 1, 1, 3, 128, 2), GatedStage("conv", 1, 1, 0, 1, 512, 2),
                      GatedStage("conv", 1, 1, 0, 1, 21, 1)]
 
     # fc_stage = GatedVggStage(1, 512, 2)
     full_stage = {"backbone_stages": backbone_stages, "initial": initial_stage}
     gate = make_sequentialGate(full_stage)
 
-
-    net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
+    n_refine_stages = 2
+    net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [], n_refine_stages=n_refine_stages)
     gate_network = net.gate
     # print(net)
     # summary(net, [(3, 32, 32), (1,)])
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     # right now, it can only work on single gpu with number 0, parallel not working
     # gate and inputs are on different gpus
     cuda = torch.cuda.is_available()
-    cuda = False
+    # cuda = False
     device_ids = [0]
 
     if cuda:
@@ -69,8 +69,10 @@ if __name__ == "__main__":
     config.read('conf.text')
     train_data_dir = config.get('data', 'train_data_dir')
     train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 2
-    train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
+    train_synth_data_dir = config.get('data', 'train_synth_data_dir')
+    train_synth_label_dir = config.get('data', 'train_synth_label_dir')
+    batch_size = 24
+    train_data = CMUHand(data_dir=[train_data_dir,train_synth_data_dir], label_dir=[train_label_dir, train_synth_label_dir])
     train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
     ######################### learner #######################
@@ -102,7 +104,6 @@ if __name__ == "__main__":
     start = 0
     train_epochs = 100
     seed = 1
-    n_refine_stages = 1
     for epoch in range(start, start + train_epochs):
         print("==== Train: Epoch %s: seed=%s", epoch, seed)
         batch_idx = 0

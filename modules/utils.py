@@ -126,7 +126,9 @@ def make_sequentialGate(dict_stages):
 
 def get_kpts(map_6, img_h = 368.0, img_w = 368.0):
 
-    # map_6 (21,45,45)
+    # map_6 (21,45,45) or (2, 21, 45, 45)
+    if len(map_6.shape) == 4:
+        map_6 = map_6[-1,:,:,:]
     kpts = []
     # for m in map_6[1:]:
     for m in map_6:

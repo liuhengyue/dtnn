@@ -1,6 +1,9 @@
 [data]
 train_data_dir  = dataset/CMUHand/hand_labels/train/crop
 train_label_dir = dataset/CMUHand/hand_labels/train/crop_label
+train_synth_data_dir  = dataset/CMUHand/hand_labels_synth/crop
+train_synth_label_dir = dataset/CMUHand/hand_labels_synth/crop_label
+
 save_dir        = ckpt/
 
 test_data_dir  = dataset/CMUHand/hand_labels/test/crop
@@ -8,21 +11,21 @@ test_label_dir = dataset/CMUHand/hand_labels/test/crop_label
 
 
 [training]
-learning_rate   = 8e-6
-batch_size      = 1
-epochs          = 100
+learning_rate   = 8e-7
+batch_size      = 60
+epochs          = 50
 begin_epoch     = 0
 
 
 [test]
-best_model       =100
+best_model       =50
 predict_label_dir = save/test_label
 predict_labels_dir = save/test_labels
 pck_save_dir    = save/test_pck.csv
 
 
 [predict]
-best_model       =100
+best_model       =50
 predict_data_dir = dataset/CMUHand/hand_labels/test/crop
 predict_label_dir = dataset/CMUHand/hand_labels/test/crop_label
 predict_labels_dir = dataset/CMUHand/hand_labels/test/predict_labels

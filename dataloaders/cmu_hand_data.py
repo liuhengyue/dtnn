@@ -34,6 +34,7 @@ from torch.utils.data import Dataset
 import numpy as np
 import json
 import scipy.misc
+import glob
 
 from src.util import *
 
@@ -55,6 +56,7 @@ class CMUHand(Dataset):
         self.sigma = sigma  # gaussian center heat map sigma
 
         self.images_dir = []
+        self.annotation_dir = []
         self.gen_imgs_dir()
 
     def gen_imgs_dir(self):
@@ -62,11 +64,23 @@ class CMUHand(Dataset):
         get absolute directory of all images
         :return:
         """
-        imgs = os.listdir(self.data_dir)
-        for im in imgs:
-            if im == '.DS_Store':
-                continue
-            self.images_dir.append(os.path.join(self.data_dir, im)) # absolute dir
+        if isinstance(self.data_dir, list):
+            for img_dir in self.data_dir:
+                imgs = glob.glob(os.path.join(img_dir, "*.jpg"))
+                self.images_dir.extend(imgs) # absolute dir
+            if self.mode == "train":
+                for anno_dir in self.label_dir:
+                    annos = glob.glob(os.path.join(anno_dir, "*.json"))
+                    self.annotation_dir.extend(annos)
+        else:
+            imgs = glob.glob(os.path.join(self.data_dir, "*.jpg"))
+            self.images_dir.extend(imgs) # absolute dir
+            if self.mode == "train":
+                annos = glob.glob(os.path.join(self.label_dir, "*.json"))
+                self.annotation_dir.extend(annos)
+        if self.mode == "train":
+            assert len(self.images_dir) == len(self.annotation_dir), \
+                "number of images [{}] and annotations [{}] mismatch.".format(len(self.images_dir), len(self.annotation_dir))
 
         print('total number of image is ' + str(len(self.images_dir)))
 
@@ -98,7 +112,7 @@ class CMUHand(Dataset):
         # get label map
         if self.mode == "train":
             label_size = self.width // 8 - 1         # 45
-            label_path = os.path.join(self.label_dir, os.path.splitext(os.path.basename(img))[0] + '.json')
+            label_path = self.annotation_dir[idx]
             labels = json.load(open(label_path))
 
             label = labels['hand_pts_crop']         # 0005  list       21 * 2

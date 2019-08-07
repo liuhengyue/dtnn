@@ -140,8 +140,9 @@ class CPM_MobileNet(nn.Module):
 
 
 if __name__ == '__main__':
-    num_refinement_stages = 0
+    num_refinement_stages = 3
     net = CPM_MobileNet(num_refinement_stages)
+    net.cuda()
     # print(net)
     summary(net, (3, 368, 368))
     x = torch.randn(2, 3, 368, 368)

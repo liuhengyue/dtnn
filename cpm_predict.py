@@ -203,7 +203,6 @@ def Tests_save_label(predict_heatmaps, step, imgs):
                                    '_' + im + '.json', 'w'), sort_keys=True, indent=4)
 
 def image_test(net, image_path, draw=True):
-    OUTPUT_STAGE = 2
     frame = Image.open(image_path)
     frame = frame.resize((368, 368))
     frame_copy = np.array(frame)
@@ -212,7 +211,7 @@ def image_test(net, image_path, draw=True):
     frame.unsqueeze_(0)
     frame = Variable(frame)
     pred_6 = net(frame)
-    pred = pred_6[0, OUTPUT_STAGE, :, :, :].cpu().detach().numpy()
+    pred = pred_6[0, -1, :, :, :].cpu().detach().numpy()
     if draw:
         kpts = get_kpts(pred)
         draw_paint(frame_copy, kpts)
@@ -231,15 +230,19 @@ test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=True)
 
 # Build model
 # net = CPM(21)
-n_refine_stages = 2
+n_refine_stages = 3
 net = CPM_MobileNet(n_refine_stages)
+net = net.eval()
 cuda = False
 if cuda:
     net = net.cuda(device_ids[0])
     net = nn.DataParallel(net, device_ids=device_ids)  # multi-Gpu
 
-model_path = os.path.join("ckpt/", 'cpm_r' + str(n_refine_stages) + '_model_epoch{:d}.pth'.format(55))
+model_path = os.path.join("ckpt/", 'cpm_r' + str(n_refine_stages) + '_model_epoch{:d}.pth'.format(100))
 state_dict = torch.load(model_path, map_location=lambda storage, loc: storage)
+# print(state_dict.keys())
+# print("-----")
+# print(net.state_dict().keys())
 net.load_state_dict(state_dict)
 # print(state_dict.keys())
 # if cuda:

@@ -89,7 +89,7 @@ class GatedMobilenet(nn.Module):
         self.backbone = nn.ModuleList()
         self.initial_stage = None
         self.refinement_stages = nn.ModuleList()
-        self.modules = []
+        # self.modules = []
         self.tmp_gated_modules = [] # GatedChainNetwork has a property called gated_modules
         
         self.__set_backbone()
@@ -208,7 +208,8 @@ class GatedMobilenet(nn.Module):
                     self.tmp_gated_modules.extend(gated_m)
                 else:
                     self.backbone.append(nn.Conv2d(
-                        self.in_channels, stage.nchannels, stage.kernel_size, padding=1))
+                        self.in_channels, stage.nchannels, stage.kernel_size,
+                        stride=stage.stride, padding=stage.padding))
                 if self.batchnorm:
                     self.backbone.append(nn.BatchNorm2d(stage.nchannels))
                 # modules.append(nn.ReLU())
@@ -298,13 +299,13 @@ if __name__ == "__main__":
     # groups.extend( [gi] * fc_stage.nlayers )
     # gate = strategy.GroupedGate( gate_modules, groups )
 
-    net = GatedMobilenet(gate, (3, 32, 32), 21, backbone_stages, None, initial_stage, [])
+    net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
     net.eval()
-    net = net.cuda()
-    print(net)
+    # net = net.cuda()
+    # print(net)
     # summary(net, [(3, 368, 368), (1,)])
-    x = torch.rand( 1, 3, 32, 32).cuda()
-    u = torch.tensor(0.5).cuda()
+    x = torch.rand( 1, 3, 368, 368)
+    u = torch.tensor(0.5)
     y = net(x, u)
     # print(y.size())
     print( y[0].size() )

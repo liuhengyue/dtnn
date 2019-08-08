@@ -26,14 +26,14 @@ if __name__ == "__main__":
     root_logger.addHandler(handler)
 
     # order: "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
-    backbone_stages = [GatedStage("conv", 3, 2, 0, 1, 32, 4), GatedStage("dw_conv", 3, 1, 1, 1, 64, 4),
-                       GatedStage("dw_conv", 3, 2, 0, 1, 128, 4), GatedStage("dw_conv", 3, 1, 1, 1, 128, 4),
-                       GatedStage("dw_conv", 3, 2, 0, 1, 256, 4), GatedStage("dw_conv", 3, 1, 1, 1, 256, 4),
-                       GatedStage("dw_conv", 3, 1, 1, 1, 512, 4), GatedStage("dw_conv", 3, 1, 1, 1, 512, 4),
-                       GatedStage("dw_conv", 3, 1, 1, 4, 512, 4), GatedStage("conv", 3, 1, 1, 1, 256, 4),
-                       GatedStage("conv", 3, 1, 1, 1, 128, 4)]
+    backbone_stages = [GatedStage("conv", 3, 2, 0, 1, 32, 1), GatedStage("dw_conv", 3, 1, 1, 1, 64, 2),
+                       GatedStage("dw_conv", 3, 2, 0, 1, 128, 2), GatedStage("dw_conv", 3, 1, 1, 1, 128, 2),
+                       GatedStage("dw_conv", 3, 2, 0, 1, 256, 2), GatedStage("dw_conv", 3, 1, 1, 1, 256, 2),
+                       GatedStage("dw_conv", 3, 1, 1, 1, 512, 2), GatedStage("dw_conv", 3, 1, 1, 1, 512, 2),
+                       GatedStage("dw_conv", 3, 1, 1, 4, 512, 2), GatedStage("conv", 3, 1, 1, 1, 256, 2),
+                       GatedStage("conv", 3, 1, 1, 1, 128, 2)]
 
-    initial_stage = [GatedStage("conv", 3, 1, 1, 3, 128, 4), GatedStage("conv", 1, 1, 0, 1, 512, 4),
+    initial_stage = [GatedStage("conv", 3, 1, 1, 3, 128, 2), GatedStage("conv", 1, 1, 0, 1, 512, 2),
                      GatedStage("conv", 1, 1, 0, 1, 21, 1)]
 
     # fc_stage = GatedVggStage(1, 512, 2)
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
     gate_network = net.gate
 
-    filename = model_file("ckpt/gated_cpm/", 100, ".latest")
+    filename = model_file("ckpt/gated_cpm/", 310, "")
     with open( filename, "rb" ) as f:
       state_dict = torch.load(f, map_location="cpu")
       load_model( net, state_dict,

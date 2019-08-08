@@ -19,8 +19,8 @@ import configparser
 
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-
-
+from modules.load_state import load_state, load_from_mobilenet
+from modules.get_parameters import get_parameters_conv, get_parameters_bn, get_parameters_conv_depthwise
 # multi-GPU
 device_ids = [0, 1]
 
@@ -51,13 +51,36 @@ train_data = Mydata(data_dir=train_data_dir, label_dir=train_label_dir)
 print('Train dataset total number of images sequence is ----' + str(len(train_data)))
 
 # Data Loader
-train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=False)
 
 # *********************** Build model ***********************
 
 # net = CPM(out_c=21)
 n_refine_stages = 3
 net = CPM_MobileNet(n_refine_stages)
+
+base_lr = 4e-6
+optimizer = optim.Adam([
+    {'params': get_parameters_conv(net.model, 'weight')},
+    {'params': get_parameters_conv_depthwise(net.model, 'weight'), 'weight_decay': 0},
+    {'params': get_parameters_bn(net.model, 'weight'), 'weight_decay': 0},
+    {'params': get_parameters_bn(net.model, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    {'params': get_parameters_conv(net.cpm, 'weight'), 'lr': base_lr},
+    {'params': get_parameters_conv(net.cpm, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    {'params': get_parameters_conv_depthwise(net.cpm, 'weight'), 'weight_decay': 0},
+    {'params': get_parameters_conv(net.initial_stage, 'weight'), 'lr': base_lr},
+    {'params': get_parameters_conv(net.initial_stage, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    {'params': get_parameters_bn(net.initial_stage, 'weight'), 'weight_decay': 0},
+    {'params': get_parameters_bn(net.initial_stage, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    {'params': get_parameters_conv(net.refinement_stages, 'weight'), 'lr': base_lr * 4},
+    {'params': get_parameters_conv(net.refinement_stages, 'bias'), 'lr': base_lr * 8, 'weight_decay': 0},
+    {'params': get_parameters_bn(net.refinement_stages, 'weight'), 'weight_decay': 0},
+    {'params': get_parameters_bn(net.refinement_stages, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+], lr=base_lr, weight_decay=5e-4)
+
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=5, threshold=1e-2, verbose=True)
+
+# cuda = False
 if cuda:
     print("Detected gpus.")
     net = net.cuda(device_ids[0])
@@ -78,12 +101,18 @@ if begin_epoch > 0:
     #         single_state_dict[name] = v
     #     # load params
     #     net.load_state_dict(single_state_dict)
-
+pretrained = True
+if pretrained:
+    pretrained_model_path = "ckpt/mobilenet_sgd_68.848.pth.tar"
+    pretrained_checkpoint = torch.load(pretrained_model_path, lambda storage, loc: storage)
+    load_from_mobilenet(net, pretrained_checkpoint)
 
 def train():
     # *********************** initialize optimizer ***********************
-    optimizer = optim.Adam(params=net.parameters(), lr=learning_rate, betas=(0.5, 0.999))
-    criterion = nn.MSELoss(reduction='sum')                       # loss function MSE average
+
+
+    # optimizer = optim.Adam(params=net.parameters(), lr=learning_rate, betas=(0.5, 0.999))
+    criterion = nn.MSELoss(reduction='mean')                       # loss function MSE average
 
     net.train()
     for epoch in range(begin_epoch, epochs + 1):
@@ -115,11 +144,15 @@ def train():
             if step % 10 == 0:
                 print('--step .....' + str(step))
                 print('--loss ' + str(float(loss.data.item())))
+                save_images(label_map[:, -1, :, :, :].cpu(), pred_6[:, -1, :, :, :].cpu(), step, epoch, imgs)
+                break
 
-            if step % 200 == 0:
+            if step % 30 == 0:
                 save_images(label_map[:, -1, :, :, :].cpu(), pred_6[:, -1, :, :, :].cpu(), step, epoch, imgs)
 
-        if epoch % 5 == 0:
+        scheduler.step(loss, epoch)
+
+        if epoch % 50 == 0:
             if isinstance(net, torch.nn.DataParallel):
                 torch.save(net.module.state_dict(),
                            os.path.join(save_dir, 'cpm_r' + str(n_refine_stages) + '_model_epoch{:d}.pth'.format(epoch)))

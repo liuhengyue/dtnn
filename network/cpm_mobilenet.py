@@ -140,7 +140,7 @@ class CPM_MobileNet(nn.Module):
 
 
 if __name__ == '__main__':
-    num_refinement_stages = 3
+    num_refinement_stages = 5
     net = CPM_MobileNet(num_refinement_stages)
     net.cuda()
     # print(net)

@@ -172,9 +172,9 @@ def image_test(net, image_path, gated=False):
         u = torch.tensor(1.0)
         # right now just one stage
         pred_6, _ = net(frame, u)
-        pred = pred_6[0].cpu().detach().numpy()
+        pred = pred_6[0, -1, :, :, :].cpu().detach().numpy()
     else:
         pred_6 = net(frame)
-        pred = pred_6[0, OUTPUT_STAGE, :, :, :].cpu().detach().numpy()
+        pred = pred_6[0, -1, :, :, :].cpu().detach().numpy()
     return pred, frame_copy
 

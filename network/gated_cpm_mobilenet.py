@@ -207,9 +207,13 @@ class GatedMobilenet(nn.Module):
                     self.backbone.extend(m)
                     self.tmp_gated_modules.extend(gated_m)
                 else:
-                    self.backbone.append(nn.Conv2d(
-                        self.in_channels, stage.nchannels, stage.kernel_size,
-                        stride=stage.stride, padding=stage.padding))
+                    if stage.name == "conv":
+                        self.backbone.append(nn.Conv2d(
+                            self.in_channels, stage.nchannels, stage.kernel_size,
+                            stride=stage.stride, padding=stage.padding))
+                    elif stage.name == "dw_conv":
+                        self.backbone.append(conv_dw(self.in_channels, stage.nchannels,
+                            kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding, dilation=1))
                 if self.batchnorm:
                     self.backbone.append(nn.BatchNorm2d(stage.nchannels))
                 # modules.append(nn.ReLU())
@@ -241,9 +245,16 @@ class GatedMobilenet(nn.Module):
                             False)
             self.refinement_stages.append(stage)
 
-    # def forward(self, x, u=None):
-    #     x_output, g = super().forward(x, u)
-    #     return x_output
+    def load_pretrained_weights(self, filename):
+        with open(filename, "rb") as f:
+            state_dict = torch.load(f, map_location="cpu")
+            load_model(self, state_dict,
+                       load_gate=True, strict=True)
+        # # set required grad
+        # if freeze:
+        #     for name, param in self.heatmap_net.named_parameters():
+        #         # print(name)
+        #         param.requires_grad = False
 
 
 

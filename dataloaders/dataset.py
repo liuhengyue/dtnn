@@ -409,7 +409,7 @@ class VideoDataset(Dataset):
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
     subset = ['No gesture', 'Thumb Down', 'Thumb Up', 'Swiping Left', 'Swiping Right']
-    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=2, preprocess=False, subset=subset)
+    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=2, preprocess=True, subset=subset)
     train_loader = DataLoader(train_data, batch_size=2, shuffle=True, num_workers=1)
 
     for i, sample in enumerate(train_loader):

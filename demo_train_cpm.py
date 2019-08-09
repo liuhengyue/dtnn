@@ -26,6 +26,19 @@ if __name__ == "__main__":
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
 
+    ######################### dataset #######################
+    config = configparser.ConfigParser()
+    config.read('conf.text')
+    train_data_dir = config.get('data', 'train_data_dir')
+    train_label_dir = config.get('data', 'train_label_dir')
+    train_synth_data_dir = config.get('data', 'train_synth_data_dir')
+    train_synth_label_dir = config.get('data', 'train_synth_label_dir')
+    batch_size = config.getint('training', 'batch_size')
+    train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
+    # train_data = CMUHand(data_dir=[train_data_dir,train_synth_data_dir], label_dir=[train_label_dir, train_synth_label_dir])
+    train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=False)
+
+    ##### model #####
     # order: "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
     backbone_stages = [GatedStage("conv", 3, 2, 0, 1, 32, 1), GatedStage("dw_conv", 3, 1, 1, 1, 64, 2),
                        GatedStage("dw_conv", 3, 2, 0, 1, 128, 2), GatedStage("dw_conv", 3, 1, 1, 1, 128, 2),
@@ -45,7 +58,16 @@ if __name__ == "__main__":
     net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [], n_refine_stages=n_refine_stages)
     gate_network = net.gate
 
-    base_lr = 4e-6
+    # load pretrained weights
+    pretrained = False
+    if pretrained:
+        filename = model_file("ckpt/gated_cpm", 1000, "")
+        with open(filename, "rb") as f:
+            state_dict = torch.load(f, map_location="cpu")
+            load_model(net, state_dict,
+                       load_gate=True, strict=True)
+
+    base_lr = 4e-4
     optimizer = optim.Adam([
         {'params': get_parameters_conv(net.backbone, 'weight')},
         {'params': get_parameters_conv_depthwise(net.backbone, 'weight'), 'weight_decay': 0},
@@ -61,7 +83,22 @@ if __name__ == "__main__":
         {'params': get_parameters_bn(net.refinement_stages, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
     ], lr=base_lr, weight_decay=5e-4)
 
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=5, threshold=1e-2, verbose=True)
+    # optimizer = optim.SGD([
+    #     {'params': get_parameters_conv(net.backbone, 'weight')},
+    #     {'params': get_parameters_conv_depthwise(net.backbone, 'weight'), 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.backbone, 'weight'), 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.backbone, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    #     {'params': get_parameters_conv(net.initial_stage, 'weight'), 'lr': base_lr},
+    #     {'params': get_parameters_conv(net.initial_stage, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.initial_stage, 'weight'), 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.initial_stage, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    #     {'params': get_parameters_conv(net.refinement_stages, 'weight'), 'lr': base_lr * 4},
+    #     {'params': get_parameters_conv(net.refinement_stages, 'bias'), 'lr': base_lr * 8, 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.refinement_stages, 'weight'), 'weight_decay': 0},
+    #     {'params': get_parameters_bn(net.refinement_stages, 'bias'), 'lr': base_lr * 2, 'weight_decay': 0},
+    # ], lr=base_lr, weight_decay=5e-4, momentum=0.9)
+
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=50, threshold=1e-2, verbose=True)
     # print(net)
     # summary(net, [(3, 32, 32), (1,)])
 
@@ -75,24 +112,14 @@ if __name__ == "__main__":
     # gate and inputs are on different gpus
     cuda = torch.cuda.is_available()
     # cuda = False
-    device_ids = [0, 1]
+    device_ids = [0, 1, 2, 3]
 
     if cuda:
         net = net.cuda()
         if len(device_ids) > 1:
             net = torch.nn.DataParallel(net, device_ids=device_ids)
 
-    ######################### dataset #######################
-    config = configparser.ConfigParser()
-    config.read('conf.text')
-    train_data_dir = config.get('data', 'train_data_dir')
-    train_label_dir = config.get('data', 'train_label_dir')
-    train_synth_data_dir = config.get('data', 'train_synth_data_dir')
-    train_synth_label_dir = config.get('data', 'train_synth_label_dir')
-    batch_size = config.getint('training', 'batch_size')
-    train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
-    # train_data = CMUHand(data_dir=[train_data_dir,train_synth_data_dir], label_dir=[train_label_dir, train_synth_label_dir])
-    train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=False)
+
 
     ######################### learner #######################
     # GatePolicyLearner
@@ -139,6 +166,7 @@ if __name__ == "__main__":
             yhat = learner.forward(i, inputs, labels)
             loss = learner.backward(i, yhat, labels)
             if i % 10 == 0:
+                print("Step [{}] loss: {}".format(i, loss))
                 save_images(labels[:, -1, :, :, :].cpu(), yhat[:, -1, :, :, :].cpu(), i, epoch, imgs)
                 break
             batch_idx += 1

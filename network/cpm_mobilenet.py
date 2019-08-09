@@ -137,6 +137,10 @@ class CPM_MobileNet(nn.Module):
         y = torch.stack(stages_output, dim=1)
         return y
 
+    def load_pretrained_weights(self, filename):
+        state_dict = torch.load(filename, lambda storage, loc: storage)
+        self.load_state_dict(state_dict)
+
 
 
 if __name__ == '__main__':

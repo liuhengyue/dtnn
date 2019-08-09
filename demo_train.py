@@ -7,6 +7,7 @@ import nnsearch.logging as mylog
 import logging
 import nnsearch.pytorch.gated.strategy as strategy
 from nnsearch.pytorch.gated.module import GatedChainNetwork
+from network.cpm_mobilenet import CPM_MobileNet
 from network.gated_cpm_mobilenet import GatedMobilenet
 from network.gated_c3d import GatedC3D, GatedStage
 from modules.utils import *
@@ -60,32 +61,28 @@ class GestureNet():
     For this network, all the init parameters should be seperate into two groups for the two sub-networks.
     """
 
-    def __init__(self, heatmap_net_pars, c3d_pars, dropout=0.2, **kwargs):
+    def __init__(self, heatmap_net_pars, c3d_pars, dropout=0.2, gate_heatmap=False, weights_file=None, **kwargs):
 
-
-        self.heatmap_net = GatedMobilenet(heatmap_net_pars["gate"], heatmap_net_pars["in_shape"], heatmap_net_pars["num_classes"],
+        self.gate_heatmap = gate_heatmap
+        if gate_heatmap:
+            self.heatmap_net = GatedMobilenet(heatmap_net_pars["gate"], heatmap_net_pars["in_shape"], heatmap_net_pars["num_classes"],
                                           heatmap_net_pars["backbone"], None, heatmap_net_pars["initial"], [], dropout=dropout)
-
-        self.load_pretrained_weights()
+        else:
+            self.heatmap_net = CPM_MobileNet(3)
+        if weights_file is not None:
+            self.heatmap_net.load_pretrained_weights(weights_file)
         self.heatmap_net.eval()
+        self.set_no_grad()
 
         self.c3d_net = GatedC3D(c3d_pars["gate"], c3d_pars["in_shape"],
                                           c3d_pars["num_classes"],
                                           c3d_pars["c3d"], c3d_pars["fc"],
                                           dropout=dropout)
 
-
-
-    def load_pretrained_weights(self):
-        filename = model_file("ckpt/gated_cpm", 100, ".latest")
-        with open(filename, "rb") as f:
-            state_dict = torch.load(f, map_location="cpu")
-            load_model(self.heatmap_net, state_dict,
-                       load_gate=True, strict=True)
-        # set required grad
-        for name, param in self.heatmap_net.named_parameters():
-            # print(name)
+    def set_no_grad(self):
+        for param in self.heatmap_net.parameters():
             param.requires_grad = False
+
 
 
     def get_heatmaps(self, x, u1=None):
@@ -101,10 +98,13 @@ class GestureNet():
         for b in range(B):
             x_slice = x[b] # (3, N, H, W)
             x_slice = x_slice.permute(1, 0, 2, 3) # (N, 3, H, W)
-            heatmap, _ = self.heatmap_net(x_slice, u1) # (N, 3 stages, 21, 45, 45)
+            if self.gate_heatmap:
+                heatmap, _ = self.heatmap_net(x_slice, u1) # (N, 3 stages, 21, 45, 45)
+            else:
+                heatmap = self.heatmap_net(x_slice)
             # right now, just one stage so do not slice
-            heatmap_final_stage = heatmap
-            # heatmap_final_stage = heatmap[:, -1, :, :, :] # (N, 21, 45, 45)
+            # heatmap_final_stage = heatmap
+            heatmap_final_stage = heatmap[:, -1, :, :, :] # (N, 21, 45, 45)
             heatmap_final_stage = heatmap_final_stage.permute(1, 0, 2, 3) # (21, N, 45, 45)
             batch_heatmaps.append(heatmap_final_stage)
 
@@ -132,9 +132,12 @@ if __name__ == "__main__":
 
     c3d_pars = make_c3d_net()
 
-
-    full_net = GestureNet(heatmap_net_pars, c3d_pars)
+    pretrained_weights = "ckpt/cpm_r3_model_epoch2000.pth"
+    # pretrained_weights = None
+    full_net = GestureNet(heatmap_net_pars, c3d_pars, weights_file=pretrained_weights)
+    heatmap_net = full_net.heatmap_net
     net = full_net.c3d_net
+    gate_network = net.gate
     # print(net)
     # summary(net, [(3, 32, 32), (1,)])
 
@@ -146,28 +149,29 @@ if __name__ == "__main__":
     # right now, it can only work on single gpu with number 0, parallel not working
     # gate and inputs are on different gpus
     cuda = torch.cuda.is_available()
-    device_ids = [0]
+    device_ids = [0, 1, 2, 3]
 
     if cuda:
+        heatmap_net = heatmap_net.cuda(device_ids[0])
+        net = net.cuda(device_ids[0])
         if len(device_ids) > 1:
+            heatmap_net = torch.nn.DataParallel(heatmap_net, device_ids=device_ids)
             net = torch.nn.DataParallel(net, device_ids=device_ids)
             print("Using multi-gpu: ", device_ids)
         else:
-            net = net.cuda(device_ids[0])
-            full_net.heatmap_net = full_net.heatmap_net.cuda(device_ids[0])
             print("Using single gpu: ", device_ids[0])
     ######################### dataset #######################
     # config = configparser.ConfigParser()
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 32
+    batch_size = 64
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
     # gesture dataset
     from dataloaders.dataset import VideoDataset
-    subset = ['No gesture', 'Thumb Down', 'Thumb Up', 'Swiping Left', 'Swiping Right']
+    subset = ['No gesture', 'Swiping Down', 'Swiping Up', 'Swiping Left', 'Swiping Right']
     train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, subset=subset)
     train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     ######################### learner #######################
@@ -176,21 +180,22 @@ if __name__ == "__main__":
     import torch.optim as optim
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
-    learning_rate = 0.01
+    learning_rate = 4e-1
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
     #     complexity_weights.append(1.0) # uniform
     # lambda_gate = lambda_gate * math.log(nclasses)
     optimizer = optim.SGD( net.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4 )
-    gate_network = net.gate
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=3, threshold=1e-2, eps=1e-9, verbose=True)
+
 
     gate_control = uniform_gate()
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)
     criterion = None
     learner = glearner.GatedDataPathLearner(net, optimizer, learning_rate,
-                                            gate_network, gate_control, criterion=criterion)
+                                            gate_network, gate_control, criterion=criterion, scheduler=scheduler)
 
     ######################### train #######################
     start = 0
@@ -207,12 +212,15 @@ if __name__ == "__main__":
                 inputs = inputs.cuda(device_ids[0])
                 labels = labels.cuda(device_ids[0])
             # generate intermidiate heatmaps
-            heatmaps = full_net.get_heatmaps(inputs, torch.tensor(1.0))
+            heatmaps = full_net.get_heatmaps(inputs, torch.tensor(1.0).cuda(device_ids[0]))
             yhat = learner.forward(i, heatmaps, labels)
-            learner.backward(i, yhat, labels)
+            loss = learner.backward(i, yhat, labels)
+            if i % 10 == 0:
+                print("Step [{}] loss: {}".format(i, loss))
 
             batch_idx += 1
         learner.finish_train(epoch)
+        learner.scheduler_step(loss, epoch)
         checkpoint(net, "ckpt/gated_c3d", epoch + 1, learner)
         # checkpoint(epoch + 1, learner)
         # Save final model if we haven't done so already

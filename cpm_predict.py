@@ -35,7 +35,10 @@ config.read('conf.text')
 batch_size = config.getint('training', 'batch_size')
 epochs = config.getint('training', 'epochs')
 begin_epoch = config.getint('training', 'begin_epoch')
-
+train_data_dir = config.get('data', 'train_data_dir')
+train_label_dir = config.get('data', 'train_label_dir')
+train_synth_data_dir = config.get('data', 'train_synth_data_dir')
+train_synth_label_dir = config.get('data', 'train_synth_label_dir')
 best_model = config.getint('test', 'best_model')
 
 predict_data_dir = config.get('predict', 'predict_data_dir')
@@ -149,7 +152,7 @@ def get_kpts(map_6, img_h = 368.0, img_w = 368.0):
         kpts.append([x,y])
     return kpts
 
-def draw_paint(im, kpts):
+def draw_paint(im, kpts, image_path, gt_kpts=None):
     # first need copy the image !!! Or it won't draw.
     im = im.copy()
     # draw points
@@ -157,16 +160,20 @@ def draw_paint(im, kpts):
         x = k[0]
         y = k[1]
         cv2.circle(im, (x, y), radius=1, thickness=-1, color=(0, 0, 255))
-
+    if gt_kpts:
+        for k in gt_kpts:
+            x = k[0]
+            y = k[1]
+            cv2.circle(im, (x, y), radius=1, thickness=-1, color=(0, 255, 0))
     # draw lines
     
-    for i, edge in enumerate(edges):
-        s, t = edge
-        cv2.line(im, tuple(kpts[s]), tuple(kpts[t]), color=colors[i])
+    # for i, edge in enumerate(edges):
+    #     s, t = edge
+    #     cv2.line(im, tuple(kpts[s]), tuple(kpts[t]), color=colors[i])
 
-    cv2.imshow('test_example', im)
+    cv2.imshow(image_path, im)
     cv2.waitKey(0)
-    cv2.imwrite('test_example.png', im)
+    # cv2.imwrite('test_example.png', im)
 
 def Tests_save_label(predict_heatmaps, step, imgs):
     """
@@ -212,20 +219,16 @@ def image_test(net, image_path, draw=True):
     frame = Variable(frame)
     pred_6 = net(frame)
     pred = pred_6[0, -1, :, :, :].cpu().detach().numpy()
+    # heatmap_image(Image.open(image_path), pred)
     if draw:
         kpts = get_kpts(pred)
-        draw_paint(frame_copy, kpts)
+        draw_paint(frame_copy, kpts, image_path)
     return pred
     # heatmap_image(img, pred)
 
 
 
-# ************************************ Build dataset ************************************
-test_data = Mydata(data_dir=predict_data_dir, label_dir=None, mode="test")
-print('Test dataset total number of images is ----' + str(len(test_data)))
 
-# Data Loader
-test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=True)
 
 
 # Build model
@@ -238,12 +241,13 @@ if cuda:
     net = net.cuda(device_ids[0])
     net = nn.DataParallel(net, device_ids=device_ids)  # multi-Gpu
 
-model_path = os.path.join("ckpt/", 'cpm_r' + str(n_refine_stages) + '_model_epoch{:d}.pth'.format(100))
-state_dict = torch.load(model_path, map_location=lambda storage, loc: storage)
+model_path = os.path.join("ckpt/", 'cpm_r' + str(n_refine_stages) + '_model_epoch{:d}.pth'.format(2000))
+# state_dict = torch.load(model_path, map_location=lambda storage, loc: storage)
 # print(state_dict.keys())
 # print("-----")
 # print(net.state_dict().keys())
-net.load_state_dict(state_dict)
+# net.load_state_dict(state_dict)
+net.load_pretrained_weights(model_path)
 # print(state_dict.keys())
 # if cuda:
 #     net.load_state_dict(state_dict)
@@ -276,12 +280,42 @@ net.load_state_dict(state_dict)
 
 # **************************************** test single hand image ***********************************
 import glob, random
-test_folder = 'dataset/CMUHand/hand_labels/train/crop'
-image_paths = glob.glob(os.path.join(test_folder, "*"))
-test_path = random.choice(image_paths)
+# ************************************ Build dataset ************************************
+test_data = Mydata(data_dir=predict_data_dir, label_dir=predict_label_dir, mode="test")
+train_data = Mydata(data_dir=train_data_dir, label_dir=train_label_dir, mode="train")
+print('Test dataset total number of images is ----' + str(len(test_data)))
+
+# Data Loader
+test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=True)
+idx = random.choice(range(len(train_data)))
+img, label, center, name = train_data[idx]
+# pred_6 = net(img.unsqueeze_(0))
+# pred = pred_6[0, -1, :, :, :].cpu().detach().numpy()
+#
+#
+# frame = Image.open(name)
+# frame = frame.resize((368, 368))
+# frame_copy = np.array(frame)
+# frame_copy = frame_copy[:,:,::-1]
+# kpts = get_kpts(pred)
+# gt_kpts = get_kpts(label)
+# draw_paint(frame_copy, kpts, "gt")
+print(name)
+###### GT #####
+# frame = Image.open(name)
+# frame = frame.resize((368, 368))
+# frame_copy = np.array(frame)
+# frame_copy = frame_copy[:,:,::-1]
+# kpts = get_kpts(label)
+# draw_paint(frame_copy, kpts, "gt")
+#########
+# test_folder = 'dataset/CMUHand/hand_labels/train/crop'
+# image_paths = glob.glob(os.path.join(test_folder, "*"))
+# test_path = random.choice(image_paths)
 # test_path = 'dataset/CMUHand/hand_labels/train/crop/015986866_01_r.jpg'
 # test_path = 'dataset/20bn-jester-preprocessed/val/Stop Sign/234/00027.jpg'
-image_test(net, test_path)
+name = "dataset/CMUHand/hand_labels/train/crop/Alexander_mouse_cat_rooster.flv_000150_r.jpg"
+image_test(net, name)
 
 # OUTPUT_STAGE = 2
 

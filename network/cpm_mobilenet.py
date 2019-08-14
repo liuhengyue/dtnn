@@ -21,6 +21,7 @@ class InitialStage(nn.Module):
     def forward(self, x):
         trunk_features = self.trunk(x)
         heatmaps = self.heatmaps(trunk_features)
+        heatmaps = nn.Sigmoid()(heatmaps)
         return [heatmaps]
 
 
@@ -95,6 +96,7 @@ class RefinementStage(nn.Module):
     def forward(self, x):
         trunk_features = self.trunk(x)
         heatmaps = self.heatmaps(trunk_features)
+        heatmaps = nn.Sigmoid()(heatmaps)
         return [heatmaps]
 
 

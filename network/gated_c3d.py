@@ -103,8 +103,8 @@ class GatedC3D(GatedChainNetwork):
                         self.tmp_modules.extend(m)
                         self.tmp_gated_modules.extend(gated_m)
                     else:
-                        self.tmp_modules.append(nn.Conv3d(
-                            self.in_channels, stage.nchannels, stage.kernel_size, padding=stage.padding))
+                        self.tmp_modules.append(nn.Conv3d(self.in_channels, stage.nchannels,
+                                                          kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding))
                     if self.batchnorm:
                         self.tmp_modules.append(nn.BatchNorm3d(stage.nchannels))
                     self.in_channels = stage.nchannels
@@ -169,7 +169,15 @@ if __name__ == "__main__":
                  GatedStage("conv", 3, 1, 1, 2, 512, 4), GatedStage("pool", 2, 2, 0, 1, 0, 0),
                  GatedStage("conv", 3, 1, 1, 2, 512, 4), GatedStage("pool", 2, 2, 0, 1, 0, 0),]
 
-    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 1024, 2), GatedStage("fc", 0, 0, 0, 1, 27, 1)]
+    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 1024, 2)]
+    # non gated
+    c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 1, 128, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 256, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
+
+    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
     gate_modules = []
 
     for i, conv_stage in enumerate(c3d_stages):
@@ -196,9 +204,11 @@ if __name__ == "__main__":
     # groups.extend( [gi] * fc_stage.nlayers )
     # gate = strategy.GroupedGate( gate_modules, groups )
 
-    net = GatedC3D(gate, (3, 16, 64, 64), 27, c3d_stages, fc_stages)
-    print(net)
-    x = torch.rand( 2, 3, 16, 64, 64)
+    net = GatedC3D(gate, (3, 16, 64, 64), 5, c3d_stages, fc_stages)
+    # print(net)
+
+    summary(net, [(3, 16, 64, 64), (1,)], device="cpu")
+    x = torch.rand(2, 3, 16, 64, 64)
     y, g = net(Variable(x), torch.tensor(0.5))
     print("output size: {}| gate size: {}".format(y.size(), len(g)))
     y.backward

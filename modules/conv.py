@@ -68,7 +68,7 @@ def gatedDwConvBlock(ncomponents, in_shape, in_channels, out_channels, kernel_si
     gated_modules = [(modules[0], (in_channels,) + in_shape[1:]), (modules[3], out_shape)]
     return modules, gated_modules, out_shape
 
-def gated3dConvBlock(ncomponents, in_shape, in_channels, out_channels, kernel_size=3, padding=1, bn=False,
+def gated3dConvBlock(ncomponents, in_shape, in_channels, out_channels, kernel_size=3, padding=1, bn=True,
               dilation=1, stride=1, relu=True, bias=True):
     modules = [BlockGatedConv3d(ncomponents, in_channels, out_channels, kernel_size,
                          stride=stride, padding=padding, dilation=dilation, bias=bias),]

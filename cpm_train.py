@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 from modules.load_state import load_state, load_from_mobilenet
 from modules.get_parameters import get_parameters_conv, get_parameters_bn, get_parameters_conv_depthwise
 # multi-GPU
-device_ids = [0, 1, 2, 3]
+
 
 # *********************** hyper parameter  ***********************
 
@@ -39,6 +39,8 @@ batch_size = config.getint('training', 'batch_size')
 epochs = config.getint('training', 'epochs')
 begin_epoch = config.getint('training', 'begin_epoch')
 
+device_ids = config.get('training', 'device_ids')
+device_ids = [int(x) for x in device_ids.split(',')]
 cuda = torch.cuda.is_available()
 
 if not os.path.exists(save_dir):
@@ -46,8 +48,8 @@ if not os.path.exists(save_dir):
 
 
 # *********************** Build dataset ***********************
-train_data = Mydata(data_dir=train_data_dir, label_dir=train_label_dir)
-# train_data = Mydata(data_dir=[train_data_dir,train_synth_data_dir], label_dir=[train_label_dir, train_synth_label_dir])
+# train_data = Mydata(data_dir=train_data_dir, label_dir=train_label_dir)
+train_data = Mydata(data_dir=[train_data_dir,train_synth_data_dir], label_dir=[train_label_dir, train_synth_label_dir])
 print('Train dataset total number of images sequence is ----' + str(len(train_data)))
 
 # Data Loader
@@ -118,28 +120,37 @@ def train():
     criterion = nn.MSELoss(reduction='mean')                       # loss function MSE average
 
     net.train()
+
     for epoch in range(begin_epoch, epochs + 1):
         print('epoch....................' + str(epoch))
-        for step, (image, label_map, center_map, imgs) in enumerate(train_dataset):
-            image = Variable(image.cuda() if cuda else image)                   # 4D Tensor
+        for step, (image, label_map, label_mask, imgs) in enumerate(train_dataset):
+            image = image.cuda(device_ids[0]) if cuda else image                  # 4D Tensor
             # Batch_size  *  3  *  width(368)  *  height(368)
 
             # 4D Tensor to 5D Tensor
             label_map = torch.stack([label_map]*(n_refine_stages + 1), dim=1)
             # Batch_size  *  21 *   45  *  45
             # Batch_size  *   6 *   21  *  45  *  45
-            label_map = Variable(label_map.cuda() if cuda else label_map)
+            label_map = label_map.cuda(device_ids[0]) if cuda else label_map
 
+            # Batch_size * 21
+            label_mask = label_mask.cuda(device_ids[0]) if cuda else label_mask
+            # Batch_size * 1 * 21 * 1 * 1
+            label_mask.unsqueeze_(1).unsqueeze_(-1).unsqueeze_(-1)
+            # last batch could be smaller than the actual batch size
+            fillings = torch.zeros(label_map.size()).cuda(device_ids[0]) if cuda else torch.zeros(label_map.size())
+            # only visible keypoints contribute to loss
+            masked_label_map = torch.where(label_mask, label_map, fillings)
             # center_map = Variable(center_map.cuda() if cuda else center_map)    # 4D Tensor
             # Batch_size  *  width(368) * height(368)
 
             optimizer.zero_grad()
             # pred_6 = net(image, center_map)  # 5D tensor:  batch size * stages * 21 * 45 * 45
-            pred_6 = net(image)
-
+            pred_multi_stage = net(image)
+            masked_label_pred = torch.where(label_mask, pred_multi_stage, fillings)
             # ******************** calculate loss of each joints ********************
-            loss = criterion(pred_6, label_map)
-
+            # loss = criterion(pred_multi_stage, label_map)
+            loss = criterion(masked_label_pred, masked_label_map)
             # backward
             loss.backward()
             optimizer.step()
@@ -151,12 +162,14 @@ def train():
                 #     save_images(label_map[:, -1, :, :, :].cpu(), pred_6[:, -1, :, :, :].cpu(), step, epoch, imgs)
                 # break
 
-            if step % 20 == 0 and epoch % 100 == 0:
-                save_images(label_map[:, -1, :, :, :].cpu(), pred_6[:, -1, :, :, :].cpu(), step, epoch, imgs)
+            if step == 0 and epoch % 20 == 0:
+                save_images(image.cpu(), label_map[:, -1, :, :, :].cpu(), pred_multi_stage[:, -1, :, :, :].cpu(),
+                            step, epoch, imgs)
+                # break
 
         scheduler.step(loss, epoch)
 
-        if epoch % 100 == 0:
+        if epoch % 20 == 0:
             if isinstance(net, torch.nn.DataParallel):
                 torch.save(net.module.state_dict(),
                            os.path.join(save_dir, 'cpm_r' + str(n_refine_stages) + '_model_epoch{:d}.pth'.format(epoch)))

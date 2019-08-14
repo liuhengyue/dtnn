@@ -43,6 +43,8 @@ def latest_checkpoints(directory):
     return glob.glob(os.path.join(directory, "model_*.pkl.latest"))
 
 def save_model(network, output, elapsed_epochs, force_persist=False):
+    if not os.path.exists(output):
+        os.mkdir(output)
     # Save current model to tmp name
     with open(model_file(output, elapsed_epochs, ".tmp"), "wb") as fout:
         if isinstance(network, torch.nn.DataParallel):
@@ -124,22 +126,25 @@ def make_sequentialGate(dict_stages):
     return strategy.SequentialGate(gate_modules)
 
 
-def get_kpts(map_6, img_h = 368.0, img_w = 368.0):
+def get_kpts(map_6, img_h = 368.0, img_w = 368.0, t = 0.01):
 
-    # map_6 (21,45,45) or (2, 21, 45, 45)
-    if len(map_6.shape) == 4:
-        map_6 = map_6[-1,:,:,:]
+    # map_6 (21,45,45)
     kpts = []
     # for m in map_6[1:]:
     for m in map_6:
         h, w = np.unravel_index(m.argmax(), m.shape)
-        x = int(w * img_w / m.shape[1])
-        y = int(h * img_h / m.shape[0])
+        score = np.amax(m)
+        # print(score)
+        if score > t:
+            x = int(w * img_w / m.shape[1])
+            y = int(h * img_h / m.shape[0])
+        else:
+            x, y = -1, -1
         kpts.append([x,y])
     return kpts
 
 
-def draw_paint(im, kpts):
+def draw_paint(im, kpts, image_path=None, gt_kpts=None, draw_edges=True, show=False):
     # first need copy the image !!! Or it won't draw.
     im = im.copy()
     # draw points
@@ -147,16 +152,23 @@ def draw_paint(im, kpts):
         x = k[0]
         y = k[1]
         cv2.circle(im, (x, y), radius=1, thickness=-1, color=(0, 0, 255))
-
+    if gt_kpts:
+        for k in gt_kpts:
+            x = k[0]
+            y = k[1]
+            if x > -1 and y > -1:
+                cv2.circle(im, (x, y), radius=1, thickness=-1, color=(0, 255, 0))
     # draw lines
-
-    for i, edge in enumerate(edges):
-        s, t = edge
-        cv2.line(im, tuple(kpts[s]), tuple(kpts[t]), color=colors[i])
-
-    cv2.imshow('test_example', im)
-    cv2.waitKey(0)
-    cv2.imwrite('test_example.png', im)
+    if draw_edges:
+        for i, edge in enumerate(edges):
+            s, t = edge
+            if kpts[s][0] > -1 and kpts[s][1] > -1 and kpts[t][0] > -1 and kpts[t][1] > -1:
+                cv2.line(im, tuple(kpts[s]), tuple(kpts[t]), color=colors[i])
+    if show:
+        cv2.imshow(image_path, im)
+        cv2.waitKey(0)
+    return im
+    # cv2.imwrite('test_example.png', im)
 
 def image_test(net, image_path, gated=False):
     OUTPUT_STAGE = 2

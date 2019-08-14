@@ -79,7 +79,7 @@ class GatedC3D(GatedChainNetwork):
         self.dropout = dropout
         self.in_shape = in_shape
         self.in_channels = in_shape[0]
-        self.modules = []
+        self.tmp_modules = []
         self.tmp_gated_modules = [] # GatedChainNetwork has a property called gated_modules
         
         self.__set_c3d_model()
@@ -88,7 +88,7 @@ class GatedC3D(GatedChainNetwork):
         # self.fn = nn.ModuleList( modules )
         # print("modules------------------",modules)
         # print("gated modules------------------", gated_modules)
-        super().__init__(gate, self.modules, self.tmp_gated_modules, **kwargs)
+        super().__init__(gate, self.tmp_modules, self.tmp_gated_modules, **kwargs)
 
 
     def __set_c3d_model(self):
@@ -100,17 +100,17 @@ class GatedC3D(GatedChainNetwork):
                         m, gated_m, in_shape = gated3dConvBlock(stage.ncomponents, self.in_shape, self.in_channels, stage.nchannels,
                                                 kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding, bias=True)
                         self.in_shape = in_shape
-                        self.modules.extend(m)
+                        self.tmp_modules.extend(m)
                         self.tmp_gated_modules.extend(gated_m)
                     else:
-                        self.modules.append(nn.Conv3d(
-                            self.in_channels, stage.nchannels, stage.kernel_size, padding=stage.padding))
+                        self.tmp_modules.append(nn.Conv3d(self.in_channels, stage.nchannels,
+                                                          kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding))
                     if self.batchnorm:
-                        self.modules.append(nn.BatchNorm3d(stage.nchannels))
+                        self.tmp_modules.append(nn.BatchNorm3d(stage.nchannels))
                     self.in_channels = stage.nchannels
                 elif stage.name == "pool":
                     pool, in_shape = Maxpool3dWrapper(self.in_shape, kernel_size=stage.kernel_size, stride=stage.stride)
-                    self.modules.extend(pool)
+                    self.tmp_modules.extend(pool)
                     self.in_shape = in_shape
                     # compute 3dpool shape
                 # print(self.in_shape)
@@ -127,19 +127,20 @@ class GatedC3D(GatedChainNetwork):
                 if fc_stage.ncomponents > 1:
                     m = BlockGatedFullyConnected(fc_stage.ncomponents,
                                                  self.in_channels, fc_stage.nchannels)
-                    self.modules.append(m)
+                    self.tmp_modules.append(m)
                     # self.gated_modules.append( (m, in_channels) )
                     self.tmp_gated_modules.append((m, self.in_channels))
                 else:
-                    self.modules.append(FullyConnected(
+                    self.tmp_modules.append(FullyConnected(
                         self.in_channels, fc_stage.nchannels))
-                self.modules.append(nn.ReLU())
+                self.tmp_modules.append(nn.ReLU())
                 if self.dropout > 0:
-                    self.modules.append(nn.Dropout(self.dropout))
+                    self.tmp_modules.append(nn.Dropout(self.dropout))
                 self.in_channels = fc_stage.nchannels
 
     def __set_classification_layer(self):
-        self.modules.append(FullyConnected(self.in_channels, self.nclasses))
+        self.tmp_modules.append(FullyConnected(self.in_channels, self.nclasses))
+        # add
 
 
 
@@ -168,7 +169,15 @@ if __name__ == "__main__":
                  GatedStage("conv", 3, 1, 1, 2, 512, 4), GatedStage("pool", 2, 2, 0, 1, 0, 0),
                  GatedStage("conv", 3, 1, 1, 2, 512, 4), GatedStage("pool", 2, 2, 0, 1, 0, 0),]
 
-    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 1024, 2), GatedStage("fc", 0, 0, 0, 1, 27, 1)]
+    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 1024, 2)]
+    # non gated
+    c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 1, 128, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 256, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
+
+    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
     gate_modules = []
 
     for i, conv_stage in enumerate(c3d_stages):
@@ -195,9 +204,11 @@ if __name__ == "__main__":
     # groups.extend( [gi] * fc_stage.nlayers )
     # gate = strategy.GroupedGate( gate_modules, groups )
 
-    net = GatedC3D(gate, (3, 16, 64, 64), 27, c3d_stages, fc_stages)
-    print(net)
-    x = torch.rand( 2, 3, 16, 64, 64)
+    net = GatedC3D(gate, (3, 16, 64, 64), 5, c3d_stages, fc_stages)
+    # print(net)
+
+    summary(net, [(3, 16, 64, 64), (1,)], device="cpu")
+    x = torch.rand(2, 3, 16, 64, 64)
     y, g = net(Variable(x), torch.tensor(0.5))
     print("output size: {}| gate size: {}".format(y.size(), len(g)))
     y.backward

@@ -1,0 +1,6 @@
+*
+!.gitignore
+!crop_hand.py
+!crop_hand_synth.py
+!preprocess.sh
+!README.md

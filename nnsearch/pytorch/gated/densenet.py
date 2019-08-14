@@ -9,7 +9,7 @@ import nnsearch.pytorch.data as data
 from   nnsearch.pytorch.gated.module import GatedChainNetwork, GatedModule, GatedModuleList
 from   nnsearch.pytorch.modules import FullyConnected, GlobalAvgPool2d
 import nnsearch.pytorch.torchx as torchx
-
+import nnsearch.pytorch.gated.strategy as strategy
 log = logging.getLogger( __name__ )
 
 # ----------------------------------------------------------------------------
@@ -261,8 +261,8 @@ if __name__ == "__main__":
     gate_modules.append( gm )
   gate = strategy.SequentialGate( gate_modules )
   net = GatedDenseNet( gate, k, input, in_shape, 10, dense_blocks, compression=0.5 )
-  print( net )
+  # print( net )
   x = torch.rand( 4, 3, 32, 32 )
-  y = net(Variable(x))
+  y = net(Variable(x), torch.tensor(0.5))
   print( y )
-  y.backward
+  y[0].backward

@@ -317,6 +317,7 @@ class GatedChainNetwork(nn.Module):
         if self.normalize:
           g = self._normalize( g )
         self._log_gbar( g )
+        # print(m, g)
         x = m( x, g )
       else:
         x = m( x )

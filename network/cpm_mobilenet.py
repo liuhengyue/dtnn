@@ -21,6 +21,7 @@ class InitialStage(nn.Module):
     def forward(self, x):
         trunk_features = self.trunk(x)
         heatmaps = self.heatmaps(trunk_features)
+        heatmaps = nn.Sigmoid()(heatmaps)
         return [heatmaps]
 
 
@@ -95,6 +96,7 @@ class RefinementStage(nn.Module):
     def forward(self, x):
         trunk_features = self.trunk(x)
         heatmaps = self.heatmaps(trunk_features)
+        heatmaps = nn.Sigmoid()(heatmaps)
         return [heatmaps]
 
 
@@ -137,11 +139,16 @@ class CPM_MobileNet(nn.Module):
         y = torch.stack(stages_output, dim=1)
         return y
 
+    def load_pretrained_weights(self, filename):
+        state_dict = torch.load(filename, lambda storage, loc: storage)
+        self.load_state_dict(state_dict)
+
 
 
 if __name__ == '__main__':
-    num_refinement_stages = 0
+    num_refinement_stages = 5
     net = CPM_MobileNet(num_refinement_stages)
+    net.cuda()
     # print(net)
     summary(net, (3, 368, 368))
     x = torch.randn(2, 3, 368, 368)

@@ -1,6 +1,6 @@
 # get data
-# wget http://domedb.perception.cs.cmu.edu/panopticDB/hands/hand_labels.zip
-# unzip hand_labels.zip
+wget http://domedb.perception.cs.cmu.edu/panopticDB/hands/hand_labels.zip
+unzip hand_labels.zip
 
 cd hand_labels/manual_train/
 mkdir data
@@ -13,11 +13,10 @@ mkdir data
 mkdir label
 mv *jpg data/
 mv *json label/
-cd ..
 
 mv manual_train train
 mv manual_test test
-
+cd ..
 python crop_hand.py
 
 

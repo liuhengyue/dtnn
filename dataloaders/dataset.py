@@ -105,15 +105,16 @@ class VideoDataset(Dataset):
         try:
             # Loading and preprocessing.
             buffer = self.load_frames(self.fnames[index])
+
             # resize to 368 by 368
             buffer = self.resize(buffer)
             buffer = self.crop(buffer, self.clip_len, self.crop_size)
             labels = np.array(self.label_array[index])
 
-            if self.split == 'test':
-                # Perform data augmentation
-                buffer = self.randomflip(buffer)
-            buffer = self.normalize(buffer)
+            # if self.split == 'test':
+            #     # Perform data augmentation
+            #     buffer = self.randomflip(buffer)
+            # buffer = self.normalize(buffer)
             buffer = self.to_tensor(buffer)
             return torch.from_numpy(buffer), torch.from_numpy(labels)
         except:
@@ -375,13 +376,16 @@ class VideoDataset(Dataset):
         for i, frame_name in enumerate(frames):
             frame = np.array(cv2.imread(frame_name)).astype(np.float64)
             buffer[i] = frame
-
+        # just crop the left part right now, size (t, h, w, 3)
+        buffer = buffer[:, :, :self.resize_height, :]
         return buffer
 
     def crop(self, buffer, clip_len, crop_size):
         # randomly select time index for temporal jittering
         time_padding = buffer.shape[0] - clip_len
-        time_index = np.random.randint(time_padding) if time_padding > 0 else 0
+        # time_index = np.random.randint(time_padding) if time_padding > 0 else 0
+        # center crop
+        time_index = time_padding // 2 if time_padding > 0 else 0
         # Randomly select start indices in order to crop the video
         height_index = np.random.randint(buffer.shape[1] - crop_size)
         width_index = np.random.randint(buffer.shape[2] - crop_size)
@@ -395,7 +399,7 @@ class VideoDataset(Dataset):
 
         return buffer
 
-    def resize(self, buffer, size=(400, 640)):
+    def resize(self, buffer, size=(400, 400)):
         B = buffer.shape[0]
         new_buffer = np.empty((B,) + size + (3,), np.dtype('float32'))
         for b in range(B):
@@ -407,6 +411,7 @@ class VideoDataset(Dataset):
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
     from torch.utils.data import DataLoader
     subset = ['No gesture', 'Thumb Down', 'Thumb Up', 'Swiping Left', 'Swiping Right']
     train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=2, preprocess=False, subset=subset)
@@ -416,7 +421,9 @@ if __name__ == "__main__":
         inputs = sample[0]
         labels = sample[1]
         print(inputs.size())
+        print(inputs)
         print(labels)
-
-        if i == 1:
-            break
+        frame_0 = inputs[0, :, 0, :, :]
+        plt.imshow( frame_0.permute(1, 2, 0).numpy() / 255)
+        plt.show()
+        break

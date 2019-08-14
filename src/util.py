@@ -2,7 +2,7 @@ import os
 import matplotlib
 import numpy as np
 import scipy.misc
-
+import cv2
 
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
@@ -67,8 +67,11 @@ def heatmap_image(img, label, save_dir='../data_loader/img/heat.jpg'):
     os.system('rm tmp.jpg')
 
 
-def save_images(label_map, predict_heatmaps, step, epoch, imgs, save_dir='ckpt/'):
+
+
+def save_images(images, label_map, predict_heatmaps, step, epoch, imgs, save_dir='ckpt/'):
     """
+    :param images: Batch_size   * 3 *   368 * 368
     :param label_map:                       Batch_size   * joints *   45 * 45
     :param predict_heatmaps:    4D Tensor    Batch_size   * joints *   45 * 45
     :return:
@@ -76,22 +79,69 @@ def save_images(label_map, predict_heatmaps, step, epoch, imgs, save_dir='ckpt/'
     if not os.path.exists(save_dir + 'epoch' + str(epoch)):
         os.mkdir(save_dir + 'epoch' + str(epoch))
 
+    output_size = 100
+    actual_size = 90
+    margin = (output_size - actual_size) // 2
+    num_patches = 3
     for b in range(label_map.shape[0]):                     # for each batch (person)
-        output = np.ones((50 * 2, 50))           # cd .. temporal save a single image
-        seq = imgs[b].split('/')[-2]                     # sequence name 001L0
+        output = np.ones((output_size * num_patches, output_size, 3))           # cd .. temporal save a single image
+        img_name = os.path.basename(imgs[b])
+        # seq = imgs[b].split('/')[-2]                     # sequence name 001L0
 
-        pre = np.zeros((45, 45))  #
-        gth = np.zeros((45, 45))
-        im = imgs[b].split('/')[-1][1:5]  # image name 0005
+        pre = np.zeros((actual_size, actual_size))  #
+        gth = np.zeros((actual_size, actual_size))
+        # im = imgs[b].split('/')[-1][1:5]  # image name 0005
+        img_data = np.asarray(images[b, :, :, :].data)
+        img_data = np.transpose(img_data, (1, 2, 0))
+        img_data = cv2.resize(img_data, dsize=(actual_size, actual_size))
+        output[margin : actual_size + margin, margin : actual_size + margin, :] = img_data * 255
+        for i in range(21):
+            heatmap = np.asarray(predict_heatmaps[b, i, :, :].data)
+            gt_heatmap = np.asarray(label_map[b, i, :, :].data)
+            heatmap = cv2.resize(heatmap, dsize=(actual_size, actual_size))
+            gt_heatmap = cv2.resize(gt_heatmap, dsize=(actual_size, actual_size))
+            pre += heatmap  # 2D
+            gth += gt_heatmap  # 2D
+
+            output[margin * 2 + actual_size : actual_size * 2 + margin * 2, margin : actual_size + margin, :] = np.stack((gth, gth, gth), axis=-1)
+            output[margin * 3 + actual_size * 2 : actual_size * 3 + margin * 3, margin : actual_size + margin, :] = np.stack((pre, pre, pre), axis=-1)
+
+        # convert to uint8
+        output[margin * 2 + actual_size: actual_size * 2 + margin * 2, margin: actual_size + margin, :] = \
+            255 * output[margin * 2 + actual_size: actual_size * 2 + margin * 2, margin: actual_size + margin, :] / \
+            (np.max(output[margin * 2 + actual_size: actual_size * 2 + margin * 2, margin: actual_size + margin, :]) + 1e-16)
+        # print(np.max(output[margin * 2 + actual_size: actual_size * 2 + margin * 2, margin: actual_size + margin, :]))
+        output[margin * 3 + actual_size * 2: actual_size * 3 + margin * 3, margin: actual_size + margin, :] = \
+            255 * output[margin * 3 + actual_size * 2 : actual_size * 3 + margin * 3, margin : actual_size + margin, :] / \
+            (np.max(output[margin * 3 + actual_size * 2: actual_size * 3 + margin * 3, margin: actual_size + margin, :]) + 1e-16)
+        # scipy.misc.imsave(save_dir + 'epoch'+str(epoch) + '/s'+str(step)
+        #                   + '_b' + str(b) + '_' + seq + '_' + im + '.jpg', output)
+        # patch = output[margin * 2 + actual_size: actual_size * 2 + margin * 2, margin: actual_size + margin, :]
+        # plt.imshow(patch)
+        # plt.show()
+
+        scipy.misc.imsave(save_dir + 'epoch' + str(epoch) + '/s' + str(step)
+                          + '_b' + str(b) + '_' + img_name, output)
+
+
+def stack_heatmaps(heatmaps, output_size=90):
+    """
+    :param heatmaps:    4D Tensor    Batch_size   * joints *   45 * 45
+    :return:
+    """
+    output = np.zeros((heatmaps.shape[0], output_size, output_size))
+    for b in range(heatmaps.shape[0]):                     # for each batch (person)
+
+        pre = np.zeros((output_size, output_size))  #
 
         for i in range(21):
-            pre += np.asarray(predict_heatmaps[b, i, :, :].data)  # 2D
-            gth += np.asarray(label_map[b, i, :, :].data)  # 2D
-            output[0:45,  0:45] = gth
-            output[50:95, 0: 45] = pre
+            heatmap = np.asarray(heatmaps[b, i, :, :].data)
+            heatmap = cv2.resize(heatmap, dsize=(output_size, output_size))
+            pre += heatmap  # 2D
+        output[b] = pre
 
-        scipy.misc.imsave(save_dir + 'epoch'+str(epoch) + '/s'+str(step)
-                          + '_b' + str(b) + '_' + seq + '_' + im + '.jpg', output)
+    return output
+
 
 
 def PCK(predict, target, label_size=45, sigma=0.04):

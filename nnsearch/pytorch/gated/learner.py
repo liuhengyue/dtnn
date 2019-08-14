@@ -107,8 +107,8 @@ class Learner:
     # don't want to get burned later because I didn't do it.
     self.network.zero_grad()
     
-    loss = self.loss( yhat, Variable(labels) )
-    loss = torch.mean( loss )
+    loss = self.loss( yhat, labels)
+    # loss = torch.mean( loss )
     log.info( "learner.loss: %s", loss.item() )
     self.running_loss( loss.item() )
     
@@ -128,7 +128,7 @@ class Learner:
             (b, x+y) for ((b, x), (_, y)) in zip(self.grad_histogram, h)]
     self.optimizer.step()
     self.rest = None
-    
+    return loss
 # ----------------------------------------------------------------------------
 
 class GatedNetworkLearner(Learner):
@@ -166,11 +166,17 @@ class GatedDataPathLearner(GatedNetworkLearner):
   strategy for two-phase gated network training.
 
   """
-  def __init__( self, network, optimizer, learning_rate,
-      gate_policy, gate_control, **kwargs ):
+  def __init__( self, network, optimizer, learning_rate, gate_policy, gate_control, scheduler=None, **kwargs ):
     super().__init__( network, optimizer, learning_rate, gate_policy, gate_control, **kwargs )
+    self.scheduler = scheduler
+
+
   def loss( self, yhat, labels ):
     return self._class_loss( yhat, labels )
+
+  def scheduler_step(self, loss, epoch):
+    self.scheduler.step(loss, epoch)
+
     
 # ----------------------------------------------------------------------------
 

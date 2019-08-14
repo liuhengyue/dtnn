@@ -1,4 +1,5 @@
 import torch
+import torchvision.transforms as transforms
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchsummary import summary
@@ -9,57 +10,113 @@ from network.gated_cpm_mobilenet import GatedMobilenet, GatedStage
 import configparser
 from dataloaders.cmu_hand_data import CMUHand
 import random
+import torch.nn as nn
 from modules.utils import *
+from src.util import *
+from network.demo_model import GestureNet
+import cv2
+from dataloaders.dataset import VideoDataset
+import numpy as np
+import math
+import matplotlib.pyplot as plt
+def preprocess_cam_frame(oriImg, boxsize):
+    scale = boxsize / (oriImg.shape[0] * 1.0)
+    imageToTest = cv2.resize(oriImg, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4)
 
+    output_img = np.ones((boxsize, boxsize, 3)) * 128
+
+    img_h = imageToTest.shape[0]
+    img_w = imageToTest.shape[1]
+    if img_w < boxsize:
+        offset = img_w % 2
+        # make the origin image be the center
+        output_img[:, int(boxsize / 2 - math.floor(img_w / 2)):int(
+            boxsize / 2 + math.floor(img_w / 2) + offset), :] = imageToTest
+    else:
+        # crop the center of the origin image
+        output_img = imageToTest[:,
+                     int(img_w / 2 - boxsize / 2):int(img_w / 2 + boxsize / 2), :]
+    return output_img
+
+def cam_demo():
+    pretrained_weights = "ckpt/cpm_r3_model_epoch1140.pth"
+    full_net = GestureNet(weights_file=pretrained_weights)
+    full_net.eval()
+    cam = cv2.VideoCapture(0)
+    while True:
+        _, oriImg = cam.read()
+        test_img = preprocess_cam_frame(oriImg, 368)
+        img_tensor = transforms.ToTensor()(test_img).unsqueeze_(0)
+
+        pred = full_net.heatmap_net.forward(img_tensor)
+        final_stage_heatmaps = pred[0,-1,:,:,:].numpy()
+        kpts = get_kpts(final_stage_heatmaps)
+        draw = draw_paint(test_img, kpts, None)
+        cv2.imshow('color', draw.astype(np.uint8))
+        # cv2.waitKey(0)
+        if cv2.waitKey(1) == ord('q'): break
 
 
 if __name__ == "__main__":
-    # Logger setup
-    mylog.add_log_level("VERBOSE", logging.INFO - 5)
-    mylog.add_log_level("MICRO", logging.DEBUG - 5)
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    # Need to set encoding or Windows will choke on ellipsis character in
-    # PyTorch tensor formatting
-    handler = logging.FileHandler("logs/demo.log", "w", "utf-8")
-    handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
-    root_logger.addHandler(handler)
+    # pretrained_weights = "ckpt/cpm_r3_model_epoch1140.pth"
+    # full_net = GestureNet(weights_file=pretrained_weights)
+    # full_net.eval()
+    # # test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'
+    # test_folder = 'dataset/CMUHand/hand_labels/train/crop'
+    # # test_folder = 'dataset/CMUHand/hand_labels_synth/crop'
+    # # test_folder = 'dataset/20bn-jester-preprocessed/train/Swiping Left/1022'
+    # image_paths = glob.glob(os.path.join(test_folder, "*"))
+    # test_path = random.choice(image_paths)
+    # pred, frame = image_test(full_net.heatmap_net, test_path, gated=False)
+    # kpts = get_kpts(pred)
+    # draw_paint(frame, kpts, image_path=os.path.basename(test_path))
 
-    # order: "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
-    backbone_stages = [GatedStage("conv", 3, 2, 0, 1, 32, 4), GatedStage("dw_conv", 3, 1, 1, 1, 64, 4),
-                       GatedStage("dw_conv", 3, 2, 0, 1, 128, 4), GatedStage("dw_conv", 3, 1, 1, 1, 128, 4),
-                       GatedStage("dw_conv", 3, 2, 0, 1, 256, 4), GatedStage("dw_conv", 3, 1, 1, 1, 256, 4),
-                       GatedStage("dw_conv", 3, 1, 1, 1, 512, 4), GatedStage("dw_conv", 3, 1, 1, 1, 512, 4),
-                       GatedStage("dw_conv", 3, 1, 1, 4, 512, 4), GatedStage("conv", 3, 1, 1, 1, 256, 4),
-                       GatedStage("conv", 3, 1, 1, 1, 128, 4)]
+    cam_demo()
 
-    initial_stage = [GatedStage("conv", 3, 1, 1, 3, 128, 4), GatedStage("conv", 1, 1, 0, 1, 512, 4),
-                     GatedStage("conv", 1, 1, 0, 1, 21, 1)]
+    ################# Demo video dataset #################
+    # clip_length = 16
+    # subset = ['No gesture', 'Swiping Down', 'Swiping Up', 'Swiping Left', 'Swiping Right']
+    # train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=clip_length, subset=subset)
+    # # train_dataset = DataLoader(train_data, batch_size=1, shuffle=True)
+    #
+    # idx = random.choice(range(len(train_data)))
+    # seq, label = train_data[idx]
+    # seq = seq.unsqueeze(0)
+    #
+    # outputs, heatmaps = full_net.forward(seq, torch.tensor(1.0))
+    # probs = nn.Softmax(dim=1)(outputs)
+    # preds = torch.max(probs, 1)[1]
+    # pred_class = train_data.class_names[preds.cpu().int()]
+    # gt_class = train_data.class_names[label.cpu().int()]
+    #
+    # batch_seq = seq.permute(0, 2, 3, 4, 1).cpu().numpy()[:, :, :, :, ::-1]
+    # batch_heatmap = heatmaps.permute(0, 2, 1, 3, 4).cpu().numpy()
+    # total_num = batch_seq.shape[0] * clip_length * 2
+    # rows = 4
+    # cols = total_num // rows
+    # fig = plt.figure(figsize=(cols * 1, rows * 1.2))
+    #
+    # for b in range(batch_seq.shape[0]):
+    #     seq = batch_seq[b]
+    #     heatmap_images = stack_heatmaps(batch_heatmap[b]) # clip_length images
+    #     for i, heatmap_image in enumerate(heatmap_images):
+    #         img = seq[i]
+    #         loc_img = i % cols + 2 * (i // cols) * cols + 1
+    #         loc_heatmap = i % cols + (2 * (i // cols) + 1) * cols + 1
+    #         ax1 = fig.add_subplot(rows, cols, loc_img)
+    #         ax1.set_title("Frame {}".format(i), fontsize=5 + 2 * 16//total_num)
+    #         plt.imshow(img / 255)
+    #         ax1.xaxis.set_major_locator(plt.NullLocator())
+    #         ax1.yaxis.set_major_locator(plt.NullLocator())
+    #         ax2 = fig.add_subplot(rows, cols, loc_heatmap)
+    #         ax2.set_title("Heatmap {}".format(i), fontsize=5 + 2 * 16 // total_num)
+    #         ax2.xaxis.set_major_locator(plt.NullLocator())
+    #         ax2.yaxis.set_major_locator(plt.NullLocator())
+    #         plt.imshow(heatmap_image)
+    # fig.suptitle("GT: '{}' Pred: '{}'".format(gt_class, pred_class), fontsize=10)
+    # fig.tight_layout(rect=[0, 0.03, 1, 0.90])
+    # plt.show()
 
-    # fc_stage = GatedVggStage(1, 512, 2)
-    full_stage = {"backbone_stages": backbone_stages, "initial": initial_stage}
-    gate = make_sequentialGate(full_stage)
 
 
-
-
-    net = GatedMobilenet(gate, (3, 368, 368), 21, backbone_stages, None, initial_stage, [])
-    gate_network = net.gate
-
-    filename = model_file("ckpt/", 100, ".latest")
-    with open( filename, "rb" ) as f:
-      state_dict = torch.load(f, map_location="cpu")
-      load_model( net, state_dict,
-                  load_gate=True, strict=True)
-      # print(state_dict.keys())
-    net.eval()
-    # test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'
-    test_folder = 'dataset/CMUHand/hand_labels/test/crop'
-    image_paths = glob.glob(os.path.join(test_folder, "*"))
-    test_path = random.choice(image_paths)
-    # print(image_paths)
-    pred, frame = image_test(net, test_path, gated=True)
-    # print(pred)
-    kpts = get_kpts(pred)
-    draw_paint(frame, kpts)
 

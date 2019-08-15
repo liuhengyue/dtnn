@@ -199,9 +199,14 @@ class CMUHand(Dataset):
                     kpt = KeypointsOnImage([Keypoint(x, y)], shape=(label_size, label_size))
                     kpt_aug = augment.augment_keypoints(kpt)
                     x, y = kpt_aug.keypoints[0].x, kpt_aug.keypoints[0].y
-                heatmap = self.genCenterMap(y, x, sigma=self.sigma, size_w=label_size, size_h=label_size)  # numpy
-                background += heatmap               # numpy
-                label_maps[i, :, :] = np.transpose(heatmap)  # !!!
+
+                if x > -1 and x < 45 and y > -1 and y < 45:
+                    heatmap = self.genCenterMap(y, x, sigma=self.sigma, size_w=label_size, size_h=label_size)  # numpy
+                    background += heatmap               # numpy
+                    label_maps[i, :, :] = np.transpose(heatmap)  # !!!
+                # if augmented keypoints out of boundary
+                else:
+                    visible[i] = 0
             else:
                 visible[i] = 0
 

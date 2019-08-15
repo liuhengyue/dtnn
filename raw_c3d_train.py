@@ -13,18 +13,27 @@ from network.gated_c3d import GatedC3D, GatedStage
 from modules.utils import *
 # dataset
 import configparser
-from dataloaders.cmu_hand_data import CMUHand
+# from dataloaders.cmu_hand_data import CMUHand
 from tqdm import tqdm
 from network.demo_model import GestureNet
 
 def c3d():
-    c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 4), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 1, 128, 2), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 256, 4), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512, 4), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512, 4), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
+    c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 1, 128, 8), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 256, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
 
-    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 2)]
+    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 16)]
+
+    # non gated
+    # c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
+    #               GatedStage("conv", 3, 1, 1, 1, 128, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+    #               GatedStage("conv", 3, 1, 1, 2, 256, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+    #               GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+    #               GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
+    #
+    # fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
 
     stages = {"c3d": c3d_stages, "fc": fc_stages}
     gate = make_sequentialGate(stages)
@@ -98,7 +107,7 @@ if __name__ == "__main__":
     import torch.optim as optim
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
-    learning_rate = 4e-3
+    learning_rate = 4e-5
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -141,6 +150,7 @@ if __name__ == "__main__":
                 print("Step [{}] loss: {:.4f}, accuracy: {:.4f}".format(i, loss, batch_corrects / labels.size()[0]))
 
             batch_idx += 1
+
         print("Epoch end, training accuracy: {:.4f}".format(running_corrects / len(train_data)))
         learner.finish_train(epoch)
         learner.scheduler_step(loss, epoch)

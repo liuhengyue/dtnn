@@ -108,7 +108,7 @@ class Learner:
     self.network.zero_grad()
     
     loss = self.loss( yhat, labels)
-    # loss = torch.mean( loss )
+    loss = torch.mean( loss )
     log.info( "learner.loss: %s", loss.item() )
     self.running_loss( loss.item() )
     

@@ -171,13 +171,13 @@ if __name__ == "__main__":
 
     fc_stages = [GatedStage("fc", 0, 0, 0, 2, 1024, 2)]
     # non gated
-    c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 1, 128, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 256, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
-
-    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
+    # c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
+    #               GatedStage("conv", 3, 1, 1, 1, 128, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+    #               GatedStage("conv", 3, 1, 1, 2, 256, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+    #               GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+    #               GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
+    #
+    # fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
     gate_modules = []
 
     for i, conv_stage in enumerate(c3d_stages):
@@ -204,11 +204,11 @@ if __name__ == "__main__":
     # groups.extend( [gi] * fc_stage.nlayers )
     # gate = strategy.GroupedGate( gate_modules, groups )
 
-    net = GatedC3D(gate, (3, 16, 64, 64), 5, c3d_stages, fc_stages)
+    net = GatedC3D(gate, (21, 16, 45, 45), 5, c3d_stages, fc_stages)
     # print(net)
 
-    summary(net, [(3, 16, 64, 64), (1,)], device="cpu")
-    x = torch.rand(2, 3, 16, 64, 64)
+    summary(net, [(21, 16, 45, 45), (1,)], device="cpu")
+    x = torch.rand(2, 21, 16, 45, 45)
     y, g = net(Variable(x), torch.tensor(0.5))
     print("output size: {}| gate size: {}".format(y.size(), len(g)))
     y.backward

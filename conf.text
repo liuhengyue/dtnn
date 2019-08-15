@@ -12,10 +12,10 @@ test_label_dir = dataset/CMUHand/hand_labels/test/crop_label
 
 [training]
 learning_rate   = 8e-7
-batch_size      = 80
+batch_size      = 56
 epochs          = 3000
-begin_epoch     = 1140
-device_ids      = 0,1,2,3
+begin_epoch     = 1180
+device_ids      = 1,2,3
 
 [test]
 best_model       =50

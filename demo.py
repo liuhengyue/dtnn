@@ -20,56 +20,60 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 def preprocess_cam_frame(oriImg, boxsize):
-    scale = boxsize / (oriImg.shape[0] * 1.0)
-    imageToTest = cv2.resize(oriImg, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4)
+    # print(oriImg.shape)
+    # scale = boxsize / (oriImg.shape[0] * 1.0)
+    # imageToTest = cv2.resize(oriImg, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4)
 
     output_img = np.ones((boxsize, boxsize, 3)) * 128
 
-    img_h = imageToTest.shape[0]
-    img_w = imageToTest.shape[1]
+    img_h = oriImg.shape[0]
+    img_w = oriImg.shape[1]
+    shift = 100
     if img_w < boxsize:
         offset = img_w % 2
         # make the origin image be the center
-        output_img[:, int(boxsize / 2 - math.floor(img_w / 2)):int(
-            boxsize / 2 + math.floor(img_w / 2) + offset), :] = imageToTest
+        output_img[:, shift + int(boxsize / 2 - math.floor(img_w / 2)): shift + int(
+            boxsize / 2 + math.floor(img_w / 2) + offset), :] = oriImg
     else:
         # crop the center of the origin image
-        output_img = imageToTest[:,
-                     int(img_w / 2 - boxsize / 2):int(img_w / 2 + boxsize / 2), :]
+        output_img = oriImg[int(img_h / 2 - boxsize / 2): int(img_h / 2 + boxsize / 2),
+                     shift + int(img_w / 2 - boxsize / 2): shift + int(img_w / 2 + boxsize / 2), :]
     return output_img
 
 def cam_demo():
     pretrained_weights = "ckpt/cpm_r3_model_epoch1140.pth"
-    full_net = GestureNet(weights_file=pretrained_weights)
+    full_net = GestureNet(num_refinement=3, weights_file=pretrained_weights)
     full_net.eval()
+    full_net.heatmap_net = full_net.heatmap_net.cuda()
     cam = cv2.VideoCapture(0)
     while True:
         _, oriImg = cam.read()
         test_img = preprocess_cam_frame(oriImg, 368)
-        img_tensor = transforms.ToTensor()(test_img).unsqueeze_(0)
+        img_tensor = transforms.ToTensor()(test_img).unsqueeze_(0).cuda()
 
         pred = full_net.heatmap_net.forward(img_tensor)
-        final_stage_heatmaps = pred[0,-1,:,:,:].numpy()
+        final_stage_heatmaps = pred[0,-1,:,:,:].cpu().numpy()
         kpts = get_kpts(final_stage_heatmaps)
         draw = draw_paint(test_img, kpts, None)
+        # draw = test_img
         cv2.imshow('color', draw.astype(np.uint8))
-        # cv2.waitKey(0)
-        if cv2.waitKey(1) == ord('q'): break
+        cv2.waitKey(100)
+        if cv2.waitKey(100) == ord('q'): break
 
 
 if __name__ == "__main__":
     # pretrained_weights = "ckpt/cpm_r3_model_epoch1140.pth"
     # full_net = GestureNet(weights_file=pretrained_weights)
     # full_net.eval()
-    # # test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'
-    # test_folder = 'dataset/CMUHand/hand_labels/train/crop'
-    # # test_folder = 'dataset/CMUHand/hand_labels_synth/crop'
-    # # test_folder = 'dataset/20bn-jester-preprocessed/train/Swiping Left/1022'
+    # # # test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'
+    # test_folder = 'dataset/CMUHand/hand_labels/test/crop'
+    # # # test_folder = 'dataset/CMUHand/hand_labels_synth/crop'
+    # # # test_folder = 'dataset/20bn-jester-preprocessed/train/Swiping Left/1022'
     # image_paths = glob.glob(os.path.join(test_folder, "*"))
     # test_path = random.choice(image_paths)
     # pred, frame = image_test(full_net.heatmap_net, test_path, gated=False)
     # kpts = get_kpts(pred)
-    # draw_paint(frame, kpts, image_path=os.path.basename(test_path))
+    # draw_paint(frame, kpts, image_path=os.path.basename(test_path), show=True)
 
     cam_demo()
 

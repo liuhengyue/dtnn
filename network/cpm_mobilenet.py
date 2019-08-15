@@ -101,7 +101,8 @@ class RefinementStage(nn.Module):
 
 
 class CPM_MobileNet(nn.Module):
-    def __init__(self, num_refinement_stages=1, num_channels=128, num_heatmaps=21, to_onnx=False):
+    def \
+            __init__(self, num_refinement_stages=1, num_channels=128, num_heatmaps=21, to_onnx=False):
         super().__init__()
         self.model = nn.Sequential(
             conv(     3,  32, stride=2, padding=0, bias=False),
@@ -140,8 +141,15 @@ class CPM_MobileNet(nn.Module):
         return y
 
     def load_pretrained_weights(self, filename):
-        state_dict = torch.load(filename, lambda storage, loc: storage)
-        self.load_state_dict(state_dict)
+        pretrained_dict = torch.load(filename, lambda storage, loc: storage)
+        model_dict = self.state_dict()
+
+        # 1. filter out unnecessary keys
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+        # 2. overwrite entries in the existing state dict
+        model_dict.update(pretrained_dict)
+        # 3. load the new state dict
+        self.load_state_dict(pretrained_dict)
 
 
 

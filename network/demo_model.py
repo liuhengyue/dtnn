@@ -14,7 +14,7 @@ class GestureNet():
     For this network, all the init parameters should be seperate into two groups for the two sub-networks.
     """
 
-    def __init__(self, dropout=0.0, gate_heatmap=False, weights_file=None, **kwargs):
+    def __init__(self, num_refinement=3, dropout=0.0, gate_heatmap=False, weights_file=None, **kwargs):
 
         self.gate_heatmap = gate_heatmap
         self.heatmap_net_pars = self.make_heatmap_net()
@@ -23,7 +23,7 @@ class GestureNet():
             self.heatmap_net = GatedMobilenet(self.heatmap_net_pars["gate"], self.heatmap_net_pars["in_shape"], self.heatmap_net_pars["num_classes"],
                                           self.heatmap_net_pars["backbone"], None, self.heatmap_net_pars["initial"], [], dropout=dropout)
         else:
-            self.heatmap_net = CPM_MobileNet(3)
+            self.heatmap_net = CPM_MobileNet(num_refinement)
         if weights_file is not None:
             self.heatmap_net.load_pretrained_weights(weights_file)
         self.heatmap_net.eval()

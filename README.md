@@ -1,3 +1,9 @@
+# throttling-demo
+
+This is an initial README file for Latent AI throttle network demo.
+
+The demo is an end-to-end trainable gated neural network focus on single-hand keypoints detection and dynamic hand gesture recognition. The whole network consists of two sub-networks: one is a variant [Global Context for Convolutional Pose Machines](https://arxiv.org/pdf/1906.04104.pdf) based on original paper  [Convolutional Pose Machines](https://arxiv.org/pdf/1602.00134.pdf). Its implementation can be found [here](https://github.com/Daniil-Osokin/gccpm-look-into-person-cvpr19.pytorch).
+
 ## Convolutional Pose Machines 
 
 This is the Pytorch
@@ -62,3 +68,5 @@ This step is for applying trained model on datasets without ground truth
 
 
 ## 
+
+

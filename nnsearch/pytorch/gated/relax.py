@@ -15,7 +15,10 @@ log = logging.getLogger( __name__ )
 class gate_matrix_from_count(Function):
   @staticmethod
   def forward( ctx, c, n ):
-    batch_size = c.size(0)
+    if c.size() == torch.Size([]):
+      batch_size = 1
+    else:
+      batch_size = c.size(0) # sometime error for last batch
     g = torch.arange(1, n+1).expand(batch_size, n).type_as(c) # Each row == [1,...,n]
     p = c.unsqueeze(-1).expand(batch_size, n)      # Each column == c
     g = (g <= p).type_as(c) # Convert to [1 1 ... 1 0 0 ... 0] numeric

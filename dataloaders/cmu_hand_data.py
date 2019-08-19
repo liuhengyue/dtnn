@@ -46,7 +46,7 @@ def activator(images, augmenter, parents, default):
 
 class CMUHand(Dataset):
 
-    def __init__(self, data_dir, label_dir, joints=21,  sigma=1, mode="train", augment=True):
+    def __init__(self, data_dir, label_dir, joints=21,  sigma=0.5, mode="train", augment=True):
         super(CMUHand, self).__init__()
         assert mode in ["train", "test"], "wrong mode for the dataset"
         self.mode = mode

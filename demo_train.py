@@ -83,7 +83,7 @@ if __name__ == "__main__":
     import torch.optim as optim
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
-    learning_rate = 4e-3
+    learning_rate = 4e-4
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -93,7 +93,8 @@ if __name__ == "__main__":
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=3, threshold=1e-2, eps=1e-9, verbose=True)
 
 
-    gate_control = uniform_gate()
+    # gate_control = uniform_gate()
+    gate_control = constant_gate(1.0)
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)
     criterion = None

@@ -2,70 +2,107 @@ from collections import namedtuple
 from functools import reduce
 import logging
 import operator
-
+import math
 import torch
 import torch.nn as nn
-
-from nnsearch.pytorch.gated.module import (BlockGatedConv2d, BlockGatedFullyConnected, 
+from torchsummary import summary
+from nnsearch.pytorch.gated.module import (BlockGatedConv3d, BlockGatedConv2d, BlockGatedFullyConnected,
     GatedChainNetwork, GatedModule)
 from modules.conv import gatedConvBlock, gatedDwConvBlock, gated3dConvBlock, Maxpool3dWrapper
 import nnsearch.pytorch.gated.strategy as strategy
 from nnsearch.pytorch.modules import FullyConnected
+import shape_flop_util as util
 import nnsearch.pytorch.torchx as torchx
-from torchsummary import summary
+#from torchsummary import summary
 log = logging.getLogger(__name__)
+from functools import reduce, singledispatch
 
 # ----------------------------------------------------------------------------
-
-GatedVggStage = namedtuple("GatedVggStage",
-                           ["nlayers", "nchannels", "ncomponents"])
 
 GatedStage = namedtuple("GatedStage",
                            ["name", "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"])
 
-def _Vgg_params(nlayers, nconv_stages, ncomponents, scale_ncomponents):
-    channels = [64, 128, 256, 512, 512]
-    assert (0 < nconv_stages <= len(channels))
-    base = channels[0]
-    fc_layers = 2
-    fc_channels = 4096
-    conv_params = []
-    for i in range(len(channels)):
-        scale = channels[i] // base if scale_ncomponents else 1
-        conv_params.append(
-            GatedVggStage(nlayers[i], channels[i], scale * ncomponents))
-    fc_scale = fc_channels // base if scale_ncomponents else 1
-    fc_params = GatedVggStage(fc_layers, fc_channels, fc_scale * ncomponents)
-    return conv_params[:nconv_stages] + [fc_params]
-
-
-def VggA(nconv_stages, ncomponents, scale_ncomponents=False):
-    return _Vgg_params([1, 1, 2, 2, 2], nconv_stages, ncomponents, scale_ncomponents)
-
-
-def VggB(nconv_stages, ncomponents, scale_ncomponents=False):
-    return _Vgg_params([2, 2, 2, 2, 2], nconv_stages, ncomponents, scale_ncomponents)
-
-
-def VggD(nconv_stages, ncomponents, scale_ncomponents=False):
-    return _Vgg_params([2, 2, 3, 3, 3], nconv_stages, ncomponents, scale_ncomponents)
-
-
-def VggE(nconv_stages, ncomponents, scale_ncomponents=False):
-    return _Vgg_params([2, 2, 4, 4, 4], nconv_stages, ncomponents, scale_ncomponents)
-
 
 # ----------------------------------------------------------------------------
+@singledispatch
+def output_shape(layer, input_shape):
+    """ Computes the output shape given a layer and input shape, without
+    evaluating the layer. Raises `NotImplementedError` for unsupported layer
+    types.
+
+    Parameters:
+        `layer` : The layer whose output shape is desired
+        `input_shape` : The shape of the input, in the format (N, H, W, ...). Note
+            that this must *not* include a "batch" dimension or anything similar.
+    """
+    raise NotImplementedError(layer)
+
+# @output_shape.register(nn.Softmax)
+# @output_shape.register(nn.BatchNorm2d)
+@output_shape.register(nn.ReLU)
+@output_shape.register(nn.Dropout)
+@output_shape.register(nn.BatchNorm3d)
+def _(layer, input_shape):
+   return input_shape
+
+
+@output_shape.register(nn.Linear)
+def _(layer, input_shape):
+    assert (flat_size(input_shape) == layer.in_features)
+    return tuple([layer.out_features])
+
+@output_shape.register(nn.MaxPool3d)
+def _(layer, input_shape):
+    out_channels = input_shape[0]
+    return _output_shape_Conv(3, input_shape, out_channels,
+                              layer.kernel_size, layer.stride, layer.padding, layer.dilation, False)
+
+@output_shape.register(BlockGatedConv3d)
+def _(layer, input_shape):
+    out_channels = input_shape[0]
+    # print("ssss", dir(layer.components[0]).out_channel)
+    out_channels= layer.components[0].out_channels * len(layer.components)
+    return _output_shape_Conv(3, input_shape, out_channels,
+                              layer.components[0].kernel_size, layer.components[0].stride, layer.components[0].padding, layer.components[0].dilation, False)
+
+@output_shape.register(BlockGatedFullyConnected)
+def _(layer, input_shape):
+    out_channels = input_shape[0]
+    # print("ssss", dir(layer.components[0]).out_channel)
+    out_channels = layer.components[0].out_features * len(layer.components)
+    return tuple([out_channels])
+
+
+def _output_shape_Conv(dim, input_shape, out_channels, kernel_size, stride,
+                       padding, dilation, ceil_mode):
+    """ Implements output_shape for "conv-like" layers, including pooling layers.
+    """
+    assert (len(input_shape) == dim + 1)
+    kernel_size = _maybe_expand_tuple(dim, kernel_size)
+    stride = _maybe_expand_tuple(dim, stride)
+    padding = _maybe_expand_tuple(dim, padding)
+    dilation = _maybe_expand_tuple(dim, dilation)
+    quantize = math.ceil if ceil_mode else math.floor
+    out_dim = [quantize(
+        (input_shape[i + 1] + 2 * padding[i] - dilation[i] * (kernel_size[i] - 1) - 1)
+        / stride[i] + 1)
+        for i in range(dim)]
+    output_shape = tuple([out_channels] + out_dim)
+    return output_shape
+
+def flat_size(shape):
+    return reduce(operator.mul, shape)
+
+def _maybe_expand_tuple(dim, tuple_or_int):
+    if type(tuple_or_int) is int:
+        tuple_or_int = tuple([tuple_or_int] * dim)
+    else:
+        assert (type(tuple_or_int) is tuple)
+    return tuple_or_int
+# --------------------------------------------------------------------------------------
 
 class GatedC3D(GatedChainNetwork):
-    """ A parameterizable VGG-style architecture.
-
-    @article{simonyan2014very,
-      title={Very deep convolutional networks for large-scale image recognition},
-      author={Simonyan, Karen and Zisserman, Andrew},
-      journal={arXiv preprint arXiv:1409.1556},
-      year={2014}
-    }
+    """ A parameterizable conv 3d architecture.
     """
 
     def __init__(self, gate, in_shape, nclasses, c3d_stages, fc_stages,
@@ -140,8 +177,37 @@ class GatedC3D(GatedChainNetwork):
 
     def __set_classification_layer(self):
         self.tmp_modules.append(FullyConnected(self.in_channels, self.nclasses))
-        # add
 
+    def flops(self, in_shape):
+        total_macc = 0
+        gated_macc = []
+        # Keep in mind that this is only calculating flops for the function part of
+        # the network as the "work" for the gate is not a network atm
+        for (i, m) in enumerate(self.fn):
+            if isinstance(m, BlockGatedConv3d):
+                # print(dir(m))
+                module_macc = []
+                for c in m.components:
+                    module_macc.append(util.flops(c, in_shape))
+                    #in_shape = output_shape(c, in_shape)
+                gated_macc.append(module_macc)
+                in_shape = output_shape(m, in_shape)
+                #print("CALCULATING SHAPE", in_shape, m)
+                #print(module_macc)
+            elif isinstance(m, BlockGatedFullyConnected):
+                module_macc = []
+                for c in m.components:
+                    module_macc.append(util.flops(c, in_shape))
+                gated_macc.append(module_macc)
+                in_shape = util.output_shape(m, in_shape)
+                #print("CALCULATING SHAPE", in_shape)
+            else:
+                total_macc += util.flops(m, in_shape).macc
+                in_shape = output_shape(m, in_shape)
+                #print("CALCULATING SHAPE", in_shape)
+        print("TOTAL FLOPS", gated_macc)
+        total_macc += sum(sum(c.macc for c in m) for m in gated_macc)
+        return (total_macc, gated_macc)
 
 
 # ----------------------------------------------------------------------------

@@ -234,6 +234,10 @@ def _( layer, in_shape ):
 def _( layer, in_shape ):
   return Flops( 0 )
 
+@flops.register(nn.BatchNorm3d)
+def _(layer, in_shape):
+    return Flops(0)
+
 # FIXME: This is not correct
 @flops.register(nn.AvgPool2d)
 def _( layer, in_shape ):

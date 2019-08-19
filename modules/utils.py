@@ -27,7 +27,11 @@ def uniform_gate():
     return f
 
 
-gate_control = uniform_gate()
+def constant_gate( u ):
+  def f( inputs, labels ):
+    # return Variable( (u * torch.ones(inputs.size(0), 1)).type_as(inputs) )
+    return Variable( (u * torch.ones(inputs.size(0))).type_as(inputs) )
+  return f
 
 
 def penalty_fn(G, u):
@@ -151,19 +155,19 @@ def draw_paint(im, kpts, image_path=None, gt_kpts=None, draw_edges=True, show=Fa
     for k in kpts:
         x = k[0]
         y = k[1]
-        cv2.circle(im, (x, y), radius=1, thickness=-1, color=(0, 0, 255))
+        cv2.circle(im, (x, y), radius=2, thickness=-1, color=(0, 0, 255))
     if gt_kpts:
         for k in gt_kpts:
             x = k[0]
             y = k[1]
             if x > -1 and y > -1:
-                cv2.circle(im, (x, y), radius=1, thickness=-1, color=(0, 255, 0))
+                cv2.circle(im, (x, y), radius=2, thickness=-1, color=(0, 255, 0))
     # draw lines
     if draw_edges:
         for i, edge in enumerate(edges):
             s, t = edge
             if kpts[s][0] > -1 and kpts[s][1] > -1 and kpts[t][0] > -1 and kpts[t][1] > -1:
-                cv2.line(im, tuple(kpts[s]), tuple(kpts[t]), color=colors[i])
+                cv2.line(im, tuple(kpts[s]), tuple(kpts[t]), color=colors[i], thickness=2)
     if show:
         cv2.imshow(image_path, im)
         cv2.waitKey(0)
@@ -171,15 +175,22 @@ def draw_paint(im, kpts, image_path=None, gt_kpts=None, draw_edges=True, show=Fa
     # cv2.imwrite('test_example.png', im)
 
 def image_test(net, image_path, gated=False):
-    OUTPUT_STAGE = 2
-    frame = Image.open(image_path)
-    frame = frame.resize((368, 368))
-    frame_copy = np.array(frame)
-    frame_copy = frame_copy[:,:,::-1]
-    frame = transforms.ToTensor()(frame)
+
+    # frame = Image.open(image_path)
+    # # w, h, rgb
+    # frame = frame.resize((368, 368))
+    # frame_copy = np.array(frame)
+    # frame_copy = frame_copy[:,:,::-1]
+    # frame = transforms.ToTensor()(frame)
+    # frame.unsqueeze_(0)
+    # h, w, bgr
+    frame = cv2.imread(image_path)
+    frame = cv2.resize(frame, (368, 368))
+    frame_copy = frame
+    input = (frame[:,:,::-1] / 255.).astype(np.float32) # np.transpose(frame[:,:,::-1], (1,0,2))
+    frame = transforms.ToTensor()(input)
     frame.unsqueeze_(0)
-    # frame = Variable(frame)
-    # print(frame.size())
+
     if gated:
         u = torch.tensor(1.0)
         # right now just one stage

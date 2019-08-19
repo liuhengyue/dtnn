@@ -1,6 +1,10 @@
 [data]
 train_data_dir  = dataset/CMUHand/hand_labels/train/crop
 train_label_dir = dataset/CMUHand/hand_labels/train/crop_label
+
+train_large_data_dir  = dataset/CMUHand/hand_labels/train/large_crop
+train_large_label_dir = dataset/CMUHand/hand_labels/train/large_crop_label
+
 train_synth_data_dir  = dataset/CMUHand/hand_labels_synth/crop
 train_synth_label_dir = dataset/CMUHand/hand_labels_synth/crop_label
 
@@ -14,7 +18,7 @@ test_label_dir = dataset/CMUHand/hand_labels/test/crop_label
 learning_rate   = 8e-7
 batch_size      = 56
 epochs          = 3000
-begin_epoch     = 1180
+begin_epoch     = 1260
 device_ids      = 1,2,3
 
 [test]

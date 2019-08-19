@@ -30,8 +30,13 @@ config = configparser.ConfigParser()
 config.read('conf.text')
 train_data_dir = config.get('data', 'train_data_dir')
 train_label_dir = config.get('data', 'train_label_dir')
+
+train_large_data_dir = config.get('data', 'train_large_data_dir')
+train_large_label_dir = config.get('data', 'train_large_label_dir')
+
 train_synth_data_dir = config.get('data', 'train_synth_data_dir')
 train_synth_label_dir = config.get('data', 'train_synth_label_dir')
+
 save_dir = config.get('data', 'save_dir')
 
 learning_rate = config.getfloat('training', 'learning_rate')
@@ -49,7 +54,7 @@ if not os.path.exists(save_dir):
 
 # *********************** Build dataset ***********************
 # train_data = Mydata(data_dir=train_data_dir, label_dir=train_label_dir)
-train_data = Mydata(data_dir=[train_data_dir,train_synth_data_dir], label_dir=[train_label_dir, train_synth_label_dir])
+train_data = Mydata(data_dir=[train_data_dir,train_synth_data_dir, train_large_data_dir], label_dir=[train_label_dir, train_synth_label_dir, train_large_label_dir])
 print('Train dataset total number of images sequence is ----' + str(len(train_data)))
 
 # Data Loader

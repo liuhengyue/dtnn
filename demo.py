@@ -41,7 +41,7 @@ def preprocess_cam_frame(oriImg, boxsize):
     return output_img
 
 def cam_demo():
-    pretrained_weights = "ckpt/cpm_r3_model_epoch1140.pth"
+    pretrained_weights = "ckpt/cpm_r3_model_epoch1240.pth"
     full_net = GestureNet(num_refinement=3, weights_file=pretrained_weights)
     full_net.eval()
     full_net.heatmap_net = full_net.heatmap_net.cuda()
@@ -49,28 +49,31 @@ def cam_demo():
     while True:
         _, oriImg = cam.read()
         test_img = preprocess_cam_frame(oriImg, 368)
-        img_tensor = transforms.ToTensor()(test_img).unsqueeze_(0).cuda()
+        input = (test_img[:, :, ::-1] / 255.).astype(np.float32)
+        img_tensor = transforms.ToTensor()(input).unsqueeze_(0).cuda()
 
         pred = full_net.heatmap_net.forward(img_tensor)
         final_stage_heatmaps = pred[0,-1,:,:,:].cpu().numpy()
-        kpts = get_kpts(final_stage_heatmaps)
+        kpts = get_kpts(final_stage_heatmaps, t=0.3)
         draw = draw_paint(test_img, kpts, None)
         # draw = test_img
-        cv2.imshow('color', draw.astype(np.uint8))
+        cv2.imshow('demo', draw.astype(np.uint8))
         cv2.waitKey(100)
         if cv2.waitKey(100) == ord('q'): break
 
 
 if __name__ == "__main__":
-    # pretrained_weights = "ckpt/cpm_r3_model_epoch1140.pth"
-    # full_net = GestureNet(weights_file=pretrained_weights)
+    # pretrained_weights = "ckpt/cpm_r3_model_epoch1200.pth"
+    # full_net = GestureNet(num_refinement=3, weights_file=pretrained_weights)
     # full_net.eval()
+    # # full_net.heatmap_net = full_net.heatmap_net.cuda()
     # # # test_path = 'dataset/CMUHand/hand_labels/test/crop/Berry_roof_story.flv_000053_l.jpg'
-    # test_folder = 'dataset/CMUHand/hand_labels/test/crop'
+    # # test_folder = 'dataset/CMUHand/hand_labels/test/crop'
     # # # test_folder = 'dataset/CMUHand/hand_labels_synth/crop'
-    # # # test_folder = 'dataset/20bn-jester-preprocessed/train/Swiping Left/1022'
+    # test_folder = 'dataset/20bn-jester-preprocessed/train/Swiping Left/1022'
     # image_paths = glob.glob(os.path.join(test_folder, "*"))
     # test_path = random.choice(image_paths)
+    # # test_path = "C:/Users/liuhe/Downloads/IMG_2589.JPG"
     # pred, frame = image_test(full_net.heatmap_net, test_path, gated=False)
     # kpts = get_kpts(pred)
     # draw_paint(frame, kpts, image_path=os.path.basename(test_path), show=True)

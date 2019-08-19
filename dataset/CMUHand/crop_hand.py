@@ -13,8 +13,8 @@ dirs = ['train', 'test']
 
 for data in dirs:
 
-    savd_dir = 'hand_labels/' + data + '/crop/'
-    new_label_dir = 'hand_labels/' + data + '/crop_label/'
+    savd_dir = 'hand_labels/' + data + '/large_crop/'
+    new_label_dir = 'hand_labels/' + data + '/large_crop_label/'
     if not os.path.exists(savd_dir):
         os.mkdir(savd_dir)
     if not os.path.exists(new_label_dir):
@@ -38,7 +38,7 @@ for data in dirs:
 
         B = max(xmax - xmin, ymax - ymin)
         # B is the maximum dimension of the tightest bounding box
-        width = 2.2 * B     # This is based on the paper
+        width = 5 * B     # This is based on the paper
 
         # the center of hand box can be
         center = dat["hand_box_center"]
@@ -52,9 +52,13 @@ for data in dirs:
 
         im.save(savd_dir + img)  # save cropped image
 
-        lbl = pts[:, :2] - hand_box[0, :]
-        lbl = lbl * 368 / width
-        lbl = lbl.tolist()
+        pts[:, :2] = pts[:, :2] - hand_box[0, :]
+        pts[:, :2] = pts[:, :2] * 368 / width
+        lbl = pts.tolist()
+
+        # lbl = pts[:, :2] - hand_box[0, :]
+        # lbl = lbl * 368 / width
+        # lbl = lbl.tolist()
 
         label_dict = {}
         label_dict['hand_pts_crop'] = lbl

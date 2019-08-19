@@ -92,7 +92,7 @@ if __name__ == "__main__":
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 2 * len(device_ids)
+    batch_size = 3 * len(device_ids)
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
@@ -117,7 +117,8 @@ if __name__ == "__main__":
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=3, threshold=1e-2, eps=1e-9, verbose=True)
 
 
-    gate_control = uniform_gate()
+    # gate_control = uniform_gate()
+    gate_control = constant_gate(1.0)
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)
     criterion = None

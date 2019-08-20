@@ -88,7 +88,7 @@ class GatedConcat(GatedModule, nn.Module):
             Cout = g[i,j] * c( b )
             Bout.append( Cout )
           else:
-            out_shape = torchx.output_shape( c, input_shape )
+            out_shape = torchx.output_shape( c, in_shape )
             z = Variable(torch.zeros( 1, *out_shape ).type_as(x.data))
             Bout.append( z )
         Bout = torch.cat( Bout, dim=1 ) # Concat channels

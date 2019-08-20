@@ -33,7 +33,7 @@ import torch
 from torch.utils.data import Dataset
 import numpy as np
 import json
-import scipy.misc
+import imageio
 import glob
 import imgaug as ia
 import imgaug.augmenters as iaa
@@ -46,7 +46,8 @@ def activator(images, augmenter, parents, default):
 
 class CMUHand(Dataset):
 
-    def __init__(self, data_dir, label_dir, joints=21,  sigma=0.5, mode="train", augment=True):
+    def __init__(self, data_dir, label_dir, joints=21,  sigma=0.5, mode="train",
+                 augment=True, negative_augment=True):
         super(CMUHand, self).__init__()
         assert mode in ["train", "test"], "wrong mode for the dataset"
         self.mode = mode
@@ -62,9 +63,11 @@ class CMUHand(Dataset):
 
         self.images_dir = []
         self.annotation_dir = []
-        self.gen_imgs_dir()
         self.augment = augment
+        self.negative_augment = negative_augment # for supplimentary negative class training
+        self.gen_imgs_dir()
         self.aug = self.aug_generator()
+
 
     def gen_imgs_dir(self):
         """
@@ -91,11 +94,26 @@ class CMUHand(Dataset):
                 annos = glob.glob(os.path.join(self.label_dir, "*.json"))
                 annos.sort()
                 self.annotation_dir.extend(annos)
+        # add negative images
+        self.add_negative_dir()
+        # make sure everything match
         if self.mode == "train":
             assert len(self.images_dir) == len(self.annotation_dir), \
                 "number of images [{}] and annotations [{}] mismatch.".format(len(self.images_dir), len(self.annotation_dir))
 
         print('total number of image is ' + str(len(self.images_dir)))
+
+    def add_negative_dir(self):
+        negative_dir = 'dataset/20bn-jester-preprocessed/train/No gesture'
+        # grab all images in the sub-folders
+        glob_query = os.path.join(negative_dir, "**/*.jpg")
+        imgs = glob.glob(glob_query, recursive=True)
+        print("number of negative images: {}".format(len(imgs)))
+        # add to imgs dir
+        self.images_dir.extend(imgs)
+        if self.mode == "train":
+            # add artificial annotations
+            self.annotation_dir.extend(["negative"] * len(imgs))
 
     def __len__(self):
         return len(self.images_dir)
@@ -112,12 +130,13 @@ class CMUHand(Dataset):
         # get image
         img = self.images_dir[idx]              # '.../001L0/L0005.jpg' note: not necessarily true for windows
         im = Image.open(img)                # read image
+
         w, h, c = np.asarray(im).shape      # weight 256 * height 256 * 3
         ratio_x = self.width / float(w)
         ratio_y = self.height / float(h)    # 368 / 368 = 1
         im = im.resize((self.width, self.height))                       # unit8      weight 368 * height 368 * 3
 
-        image = transforms.ToTensor()(im)   # 3D Tensor  3 * height 368 * weight 368
+        image = transforms.ToTensor()(im)   # 3D Byte Tensor  3 * height 368 * weight 368
 
 
         # generate the Gaussian heat map (unused right now)
@@ -131,9 +150,12 @@ class CMUHand(Dataset):
             # debug
             # assert os.path.basename(img).split('.')[:-1] == os.path.basename(label_path).split('.')[:-1], \
             # "Mismatch on image [{}] and annotation [{}]".format(img, label_path)
-            labels = json.load(open(label_path))
+            if label_path == "negative":
+                label = self.joints * [[0, 0, -1]]
+            else:
+                labels = json.load(open(label_path))
 
-            label = labels['hand_pts_crop']         # 0005  list       21 * 2
+                label = labels['hand_pts_crop']         # 0005  list       21 * 2
 
             # augmentations
 
@@ -246,11 +268,11 @@ class CMUHand(Dataset):
 
 # test case
 if __name__ == "__main__":
-    data_dir = '../dataset/CMUHand/data/'
-    label_dir = '../dataset/CMUHand/label/'
+    data_dir = 'dataset/CMUHand/hand_labels/train/crop'
+    label_dir = 'dataset/CMUHand/hand_labels/train/crop_label'
     data = CMUHand(data_dir=data_dir, label_dir=label_dir)
 
-    img, label, center, name = data[1]
+    img, label, center, name = data[-1]
     print('dataset info ...')
     print(img.shape)         # 3D Tensor 3 * 368 * 368
     print(label.shape)       # 3D Tensor 21 * 45 * 45
@@ -260,23 +282,24 @@ if __name__ == "__main__":
     # ***************** draw label map *****************
     print('draw label map ...')
     lab = np.asarray(label)
-    out_labels = np.zeros(((45, 45)))
+    out_labels = np.zeros((45, 45), dtype=np.float32)
     for i in range(21):
         out_labels += lab[i, :, :]
-    scipy.misc.imsave('img/cmu_label.jpg', out_labels)
+    out_labels = (np.where(out_labels > 1.0, 1.0, out_labels) * 255).astype(np.uint8)
+    imageio.imwrite('visualization/cmu_label.jpg', out_labels)
 
     # ***************** draw image *****************
     print('draw image ')
     im_size = 368
     target = Image.new('RGB', (im_size, im_size))
     img = transforms.ToPILImage()(img)
-    img.save('img/cmu_img.jpg')
+    img.save('visualization/cmu_img.jpg')
 
     heatmap = np.asarray(label[0, :, :])
 
-    im = Image.open('img/uci_img.jpg')
+    im = Image.open('visualization/cmu_img.jpg')
 
-    heatmap_image(img, lab, save_dir='img/cmu_heat.jpg')
+    heatmap_image(img, lab, save_dir='visualization/cmu_heat.jpg')
 
 
 

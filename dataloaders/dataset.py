@@ -366,6 +366,7 @@ class VideoDataset(Dataset):
         return buffer
 
     def to_tensor(self, buffer):
+        buffer = buffer / 255.0
         return buffer.transpose((3, 0, 1, 2))
 
     def load_frames(self, file_dir):

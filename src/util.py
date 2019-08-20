@@ -64,7 +64,7 @@ def heatmap_image(img, label, save_dir='../data_loader/img/heat.jpg'):
             y2 += im_size
 
     target.save(save_dir)
-    os.system('rm tmp.jpg')
+    os.remove('tmp.jpg')
 
 
 

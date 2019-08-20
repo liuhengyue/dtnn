@@ -271,7 +271,7 @@ class App(GatedNetworkApp):
         net = full_net.c3d_net
         from dataloaders.dataset import VideoDataset
         from torch.utils.data import DataLoader
-        subset = ['No gesture', 'Thumb Down', 'Thumb Up', 'Swiping Left', 'Swiping Right']
+        subset = ['No gesture', 'Swiping Down', 'Swiping Left', 'Swiping Right', 'Swiping Up']
         train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, subset=subset)
         batch_size = 1
         self.train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)

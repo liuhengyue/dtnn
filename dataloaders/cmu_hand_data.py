@@ -32,6 +32,7 @@ import torchvision.transforms as transforms
 import torch
 from torch.utils.data import Dataset
 import numpy as np
+import random
 import json
 import imageio
 import glob
@@ -109,8 +110,15 @@ class CMUHand(Dataset):
         glob_query = os.path.join(negative_dir, "**/*.jpg")
         imgs = glob.glob(glob_query, recursive=True)
         print("number of negative images: {}".format(len(imgs)))
+        # positive : negative ratio 1:2
+        positive_num = len(self.images_dir)
+        negative_num = 2 * positive_num
+        negative_num = min(negative_num, len(imgs))
+        random.shuffle(imgs)
+        imgs = imgs[:negative_num]
         # add to imgs dir
         self.images_dir.extend(imgs)
+        print("Use number of negative images: {}".format(len(imgs)))
         if self.mode == "train":
             # add artificial annotations
             self.annotation_dir.extend(["negative"] * len(imgs))
@@ -151,7 +159,7 @@ class CMUHand(Dataset):
             # assert os.path.basename(img).split('.')[:-1] == os.path.basename(label_path).split('.')[:-1], \
             # "Mismatch on image [{}] and annotation [{}]".format(img, label_path)
             if label_path == "negative":
-                label = self.joints * [[0, 0, -1]]
+                label = self.joints * [[0, 0, 0]]
             else:
                 labels = json.load(open(label_path))
 
@@ -200,6 +208,9 @@ class CMUHand(Dataset):
         """
         generate label heat map
         :param label:               list            21 * 3 (changed to 3 dim with the 3rd as visibility)
+        visibility = -1 means invisable which do not contribute to loss;
+        visibility = 0 means using negative classes which contribute to loss;
+        visibility = 1 means visable keypoints which contribute to loss.
         :param label_size:          int             45
         :param joints:              int             21
         :param ratio_x:             float           1.4375
@@ -212,8 +223,8 @@ class CMUHand(Dataset):
         visible = np.ones((joints))
         # each joint
         for i in range(len(label)):
-            lbl = label[i]                      # [x, y, vis] for real, [x, y, vis] for synth
-            # skip invisible keypoints
+            lbl = label[i]                      # [x, y] for real, [x, y, vis] for synth
+            # CMU read or synth data
             if (len(lbl) == 3 and lbl[2] > 0) or len(lbl) == 2:
                 x = lbl[0] * ratio_x / 8.0          # modify the label
                 y = lbl[1] * ratio_y / 8.0
@@ -229,6 +240,10 @@ class CMUHand(Dataset):
                 # if augmented keypoints out of boundary
                 else:
                     visible[i] = 0
+            # for negative class
+            elif lbl[2] == 0:
+                pass
+            # skip invisible keypoints
             else:
                 visible[i] = 0
 

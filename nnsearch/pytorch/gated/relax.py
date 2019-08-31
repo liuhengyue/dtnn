@@ -16,8 +16,16 @@ class gate_matrix_from_count(Function):
   @staticmethod
   def forward( ctx, c, n ):
     # sometime error for last batch, so drop last for dataloader
-    batch_size = c.size(0)
-    g = torch.arange(1, n+1).expand(batch_size, n).type_as(c) # Each row == [1,...,n]
+    # if print(c), the results are
+    # tensor(8., device='cuda:0')
+    # tensor(3., device='cuda:1')
+    # tensor(8., device='cuda:2')
+    # tensor(5., device='cuda:3')
+    # So when each batch only have one image, the c is a scalar tensor
+    # this is a workaround for it
+    is_scalar = c.size() == torch.Size([])
+    batch_size = 1 if is_scalar else c.size(0)
+    g = torch.arange(1, n+1, device=c.device).expand(batch_size, n).type_as(c) # Each row == [1,...,n]
     p = c.unsqueeze(-1).expand(batch_size, n)      # Each column == c
     g = (g <= p).type_as(c) # Convert to [1 1 ... 1 0 0 ... 0] numeric
     return g

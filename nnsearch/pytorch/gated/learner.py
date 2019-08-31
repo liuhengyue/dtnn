@@ -32,7 +32,7 @@ class Learner:
     if isinstance(self.criterion, nn.CrossEntropyLoss):
       _, predicted = torch.max( yhat.data, 1 )
       correct = torch.sum( predicted == labels.data )
-      log.info( "loss.errors: %s", batch_size - correct )
+      log.debug( "loss.errors: %s", batch_size - correct )
     
     return loss
   
@@ -109,7 +109,7 @@ class Learner:
     
     loss = self.loss( yhat, labels)
     loss = torch.mean( loss )
-    log.info( "learner.loss: %s", loss.item() )
+    log.debug( "learner.loss: %s", loss.item() )
     self.running_loss( loss.item() )
     
     # Optimization
@@ -176,6 +176,9 @@ class GatedDataPathLearner(GatedNetworkLearner):
 
   def scheduler_step(self, loss, epoch):
     self.scheduler.step(loss, epoch)
+
+  def update_gate_control(self, gate_control):
+    self.gate_control = gate_control
 
     
 # ----------------------------------------------------------------------------

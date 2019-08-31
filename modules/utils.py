@@ -17,12 +17,13 @@ edges = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],
          [10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]]
 colors = [cv2.cvtColor(np.uint8([[[179 * i/float(len(edges)), 179, 179]]]),cv2.COLOR_HSV2BGR)[0, 0] for i in range(len(edges))]
 colors = [(int(color[0]), int(color[1]), int(color[2])) for color in colors]
-def uniform_gate():
+def uniform_gate(umin=0):
     def f(inputs, labels):
         # return Variable( torch.rand(inputs.size(0), 1).type_as(inputs) )
-        umin = 0
+        # umin = 0
         r = 1.0 - umin
-        return Variable(umin + r * torch.rand(inputs.size(0)).type_as(inputs))
+        device = inputs.device
+        return umin + r * torch.rand(inputs.size(0), device=device).type_as(inputs)
 
     return f
 
@@ -30,12 +31,17 @@ def uniform_gate():
 def constant_gate( u ):
   def f( inputs, labels ):
     # return Variable( (u * torch.ones(inputs.size(0), 1)).type_as(inputs) )
-    return Variable( (u * torch.ones(inputs.size(0))).type_as(inputs) )
+    device = inputs.device
+    return (u * torch.ones(inputs.size(0), device=device)).type_as(inputs)
   return f
 
 
 def penalty_fn(G, u):
     return (1 - u) * G
+
+
+
+
 
 ### save, load, checkpoint
 def model_file(directory, epoch, suffix=""):
@@ -108,7 +114,7 @@ def load_model(self, state_dict, load_gate=True, strict=True):
         if len(missing) > 0:
             raise KeyError('missing keys in state_dict: "{}"'.format(missing))
 
-def make_sequentialGate(dict_stages):
+def make_sequentialGate(dict_stages, gate_during_eval=False):
     gate_modules = []
     for key, block_stages in dict_stages.items():
         if key == "refinement":
@@ -118,12 +124,22 @@ def make_sequentialGate(dict_stages):
                 if stage.ncomponents > 1:
                     for _ in range(stage.nlayers):
                         # count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1)
-                        count = strategy.UniformCount(stage.ncomponents)
-                        gate_modules.append(strategy.NestedCountGate(stage.ncomponents, count))
+                        # the count is random
+                        # count = strategy.UniformCount(stage.ncomponents)
+
+                        # use all components
+                        # count = strategy.ConstantCount(stage.ncomponents, stage.ncomponents)
+
+                        # the count is computed from u
+                        count = strategy.ProportionToCount(0, stage.ncomponents)
+                        gate_modules.append(strategy.NestedCountFromUGate(stage.ncomponents, count, gate_during_eval=gate_during_eval))
                         if stage.name == "dw_conv":
                             # count = strategy.PlusOneCount(strategy.UniformCount(stage.ncomponents - 1))
-                            count = strategy.UniformCount(stage.ncomponents)
-                            gate_modules.append(strategy.NestedCountGate(stage.ncomponents, count))
+                            # count = strategy.UniformCount(stage.ncomponents)
+                            # count = strategy.ConstantCount(stage.ncomponents, stage.ncomponents)
+                            # the count is computed from u
+                            count = strategy.ProportionToCount(0, stage.ncomponents)
+                            gate_modules.append(strategy.NestedCountFromUGate(stage.ncomponents, count, gate_during_eval=gate_during_eval))
 
     # test
     # gate_modules.append(strategy.NestedCountGate(20, strategy.UniformCount(20)))

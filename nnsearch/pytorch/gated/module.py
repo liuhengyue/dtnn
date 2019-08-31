@@ -70,8 +70,11 @@ class GatedConcat(GatedModule, nn.Module):
       gu = torchx.unsqueeze_right_as( g, out )
       # print("G",g.shape)
       # print("GU", gu.shape)
+      # print("GU tensor: ", gu)
       # print("out", out.shape)
+      # print("out tensor:", out)
       out = gu * out
+      # print("after gate: ", out)
       out = torch.unbind( out, dim=1 )
       # dim1 is now "channels" (N). out: BxNx...
       out = torch.cat( out, dim=1 )
@@ -317,7 +320,8 @@ class GatedChainNetwork(nn.Module):
         if self.normalize:
           g = self._normalize( g )
         self._log_gbar( g )
-        # print(m, g)
+        # debug: check the gate matrix
+        # print("Layer --------------------\n", m, "\n gate matrix --------------------\n",  g)
         x = m( x, g )
       else:
         x = m( x )

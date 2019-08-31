@@ -1,7 +1,7 @@
 import os
 import matplotlib
 import numpy as np
-import scipy.misc
+import imageio
 import cv2
 
 matplotlib.use('TkAgg')
@@ -120,8 +120,8 @@ def save_images(images, label_map, predict_heatmaps, step, epoch, imgs, save_dir
         # plt.imshow(patch)
         # plt.show()
 
-        scipy.misc.imsave(save_dir + 'epoch' + str(epoch) + '/s' + str(step)
-                          + '_b' + str(b) + '_' + img_name, output)
+        imageio.imwrite(save_dir + 'epoch' + str(epoch) + '/s' + str(step)
+                          + '_b' + str(b) + '_' + img_name, output.astype(np.uint8))
 
 
 def stack_heatmaps(heatmaps, output_size=90):

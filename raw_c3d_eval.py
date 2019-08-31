@@ -17,18 +17,17 @@ import configparser
 from tqdm import tqdm
 from network.demo_model import GestureNet
 from datetime import datetime
-import re
 
 def c3d():
     span_factor = 1
 
-    c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64 * span_factor, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
+    c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
                   GatedStage("conv", 3, 1, 1, 1, 128 * span_factor, 8), GatedStage("pool", 2, 2, 0, 1, 0, 0),
                   GatedStage("conv", 3, 1, 1, 2, 256 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
                   GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
+                  GatedStage("conv", 3, 1, 1, 2, 512, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
 
-    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512 * span_factor, 4)]
+    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 4)]
 
     # non gated
     # c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
@@ -40,7 +39,7 @@ def c3d():
     # fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
 
     stages = {"c3d": c3d_stages, "fc": fc_stages}
-    gate = make_sequentialGate(stages)
+    gate = make_sequentialGate(stages, gate_during_eval=True)
     # in_shape = (21, 16, 45, 45)
     in_shape = (3, 16, 368, 368) # for raw input
     num_classes = 5
@@ -48,22 +47,24 @@ def c3d():
             "in_shape": in_shape, "num_classes": num_classes}
 
     c3d_net = GatedC3D(c3d_pars["gate"], c3d_pars["in_shape"],
-                       c3d_pars["num_classes"], c3d_pars["c3d"], c3d_pars["fc"], dropout=0)
+                       c3d_pars["num_classes"], c3d_pars["c3d"], c3d_pars["fc"],
+                       intermediate=None, dropout=0)
 
     return c3d_net
 
 
-def evaluate(elapsed_epochs, learner, testloader, cuda_devices=None):
+def evaluate(u, learner, testloader, cuda_devices=None):
     seed = 1
     # Hyperparameters interpret their 'epoch' argument as index of the current
     # epoch; we want the same hyperparameters as in the most recent training
     # epoch, but can't just subtract 1 because < 0 violates invariants.
     nclasses = len(testloader.dataset.class_names)
+    batch_size = testloader.batch_size
     class_correct = [0.0] * nclasses
     class_total = [0.0] * nclasses
 
     with torch.no_grad():
-        learner.start_eval(elapsed_epochs, seed)
+        learner.start_eval(u, seed)
         for (batch_idx, data) in enumerate(tqdm(testloader)):
             images, labels = data
             if cuda_devices:
@@ -72,24 +73,26 @@ def evaluate(elapsed_epochs, learner, testloader, cuda_devices=None):
             log.debug("eval.images.shape: %s", images.shape)
             yhat = learner.forward(batch_idx, images, labels)
             log.debug("eval.yhat: %s", yhat)
-            learner.measure(batch_idx, images, labels, yhat.data)
+            # learner.measure(batch_idx, images, labels, yhat.data)
             _, predicted = torch.max(yhat.data, 1)
             log.debug("eval.labels: %s", labels)
             log.debug("eval.predicted: %s", predicted)
             c = (predicted == labels).cpu().numpy()
             log.debug("eval.correct: %s", c)
+            # print("eval correct {}/{}".format(np.sum(c), batch_size))
             for i in range(len(c)):
                 label = labels[i]
                 class_correct[label] += c[i]
                 class_total[label] += 1
 
-        learner.finish_eval(elapsed_epochs)
+        learner.finish_eval(u)
+    log.info("test u=%s, total %s [%s/%s]", u, sum(class_correct) / sum(class_total), sum(class_correct), sum(class_total))
     for i in range(nclasses):
         if class_total[i] > 0:
-            log.info("test %s '%s' : %s", elapsed_epochs, testloader.dataset.class_names[i],
-                     class_correct[i] / class_total[i])
+            log.info("'%s' : %s [%s/%s]", testloader.dataset.class_names[i],
+                     class_correct[i] / class_total[i], class_correct[i], class_total[i])
         else:
-            log.info("test %s '%s' : None", elapsed_epochs, testloader.dataset.class_names[i])
+            log.info("'%s' : None", testloader.dataset.class_names[i])
 
 
 if __name__ == "__main__":
@@ -100,7 +103,7 @@ if __name__ == "__main__":
     root_logger.setLevel(logging.INFO)
     # Need to set encoding or Windows will choke on ellipsis character in
     # PyTorch tensor formatting
-    experiment_name = 'demo_raw_c3d'
+    experiment_name = 'eval_raw_c3d'
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     log_path = os.path.join("logs", experiment_name + '_' + timestamp + '.log')
     handler = logging.FileHandler(log_path, "w", "utf-8")
@@ -109,23 +112,23 @@ if __name__ == "__main__":
 
     net = c3d()
     gate_network = net.gate
-    ################### pre-trained
-    pretrained = True
-    if pretrained:
-        # start = 12
-        # filename = model_file("ckpt/gated_raw_c3d/", start, ".latest")
-        filename = latest_checkpoints("ckpt/gated_raw_c3d/")[0]
-        start = int(re.findall("\d+", os.path.basename(filename))[0])
-        with open(filename, "rb") as f:
-            state_dict = torch.load(f, map_location="cpu")
-            load_model(net, state_dict, load_gate=True, strict=True)
-    else:
-        start = 0
+    ################### must load the model to eval
+    # start = 11
+    # filename = model_file("ckpt/gated_raw_c3d/", start, ".latest")
+    filename = latest_checkpoints("ckpt/gated_raw_c3d/")[0]
+
+    with open(filename, "rb") as f:
+        state_dict = torch.load(f, map_location="cpu")
+        load_model(net, state_dict, load_gate=True, strict=True)
+        load_info = "Load weights from {}".format(filename)
+        print(load_info)
+        log.info(load_info)
+
 
     ### GPU support ###
     cuda = torch.cuda.is_available()
     # cuda = False
-    device_ids = [0, 1, 2, 3]
+    device_ids = [1, 2, 3] if cuda else None
     # device_ids = [1]
     if cuda:
         net = net.cuda(device_ids[0])
@@ -141,15 +144,13 @@ if __name__ == "__main__":
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 3 * len(device_ids)
+    batch_size = 6 * len(device_ids) if cuda else 1
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
     # gesture dataset
     from dataloaders.dataset import VideoDataset
     subset = ['No gesture', 'Swiping Down', 'Swiping Up', 'Swiping Left', 'Swiping Right']
-    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, subset=subset)
-    train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
     test_data = VideoDataset(dataset='20bn-jester', split='val', clip_len=16, subset=subset)
     test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=False, drop_last=False)
     ######################### learner #######################
@@ -169,61 +170,25 @@ if __name__ == "__main__":
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=3, threshold=1e-2, eps=1e-9, verbose=True)
 
 
-    gate_control = uniform_gate(0.9)
-    # gate_control = constant_gate(1.0)
+    # gate_control = uniform_gate()
+    gate_control = constant_gate(0.0)
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)
     criterion = None
     learner = glearner.GatedDataPathLearner(net, optimizer, learning_rate,
                                             gate_network, gate_control, criterion=criterion, scheduler=scheduler)
 
-    ######################### train #######################
-    # start = 0
+    ######################### eval #######################
+    # u_grid = [0.8, 0.85, 0.9, 0.95]
+    u_grid = [0.25, 0.5, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99]
     train_epochs = 50
     seed = 1
-    eval_after_epoch = False
-    for epoch in range(start, start + train_epochs):
-        print("==== Train: Epoch %s: seed=%s", epoch, seed)
-        batch_idx = 0
-        nbatches = math.ceil(len(train_data) / batch_size)
-        learner.start_train(epoch, seed)
-        running_corrects = 0.0
-        running_loss = 0.0
-        for i, data in enumerate(tqdm(train_dataset)):
-            inputs, labels = data
-            if cuda:
-                inputs = inputs.cuda(device_ids[0])
-                labels = labels.cuda(device_ids[0])
-            # generate intermidiate heatmaps
-            yhat = learner.forward(i, inputs, labels)
-            loss = learner.backward(i, yhat, labels)
-            probs = nn.Softmax(dim=1)(yhat)
-            preds = torch.max(probs, 1)[1]
-            batch_corrects = torch.sum(preds == labels.data).float()
-            running_corrects += batch_corrects
-            running_loss += loss.float()
-            if i % 500 == 0:
-                running_num = (i + 1) * batch_size
-                step_loss = running_loss / running_num
-                step_accuracy = running_corrects / running_num
-                step_info = "Step [{}] loss: {:.4f}, accuracy: {:.4f}".format(i, step_loss, step_accuracy)
-                print(step_info)
-                log.info(step_info)
-
-            batch_idx += 1
-            # break
-            # if i == 11:
-            #     break
-        end_info = "Epoch end, training accuracy: {:.4f}".format(running_corrects / len(train_data))
-        print(end_info)
-        log.info(end_info)
-        learner.finish_train(epoch)
-        learner.scheduler_step(loss, epoch)
-        checkpoint(net, "ckpt/gated_raw_c3d", epoch + 1, learner)
-
-        # eval
-        if eval_after_epoch:
-            evaluate(epoch, learner, test_dataset, cuda_devices=device_ids)
+    eval_after_epoch = True
+    for i, u in enumerate(u_grid):
+        print("==== Eval for u = %s ====", u)
+        log.info("==== Eval for u = %s ====", u)
+        learner.update_gate_control(constant_gate(u))
+        evaluate(u, learner, test_dataset, cuda_devices=device_ids)
 
         # checkpoint(epoch + 1, learner)
         # Save final model if we haven't done so already

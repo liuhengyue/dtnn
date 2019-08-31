@@ -3,32 +3,44 @@ import torch
 import shape_flop_util as util
 
 class ContextualBanditNet(nn.Module):
+    '''
+    Right now, it should takes in the intermeidate output from
+    the datanetwork, then go through a small network for contextual-aware
+    purpose to generate states.
+    '''
     def __init__(self, context_network=None):
         super(ContextualBanditNet, self).__init__()
-        # self.conv1 = nn.Conv2d(1, 5, 5, 1)
-        # self.conv2 = nn.Conv2d(5, 10, 5, 1)
-        # self.hidden_dim = 100
-        # self.layer_dim = 1
-        # self.input_dim  = 160
-        self.features = nn.Sequential(
-            nn.Conv3d(21, 64, 3, 1),
+
+        self.fc_size = 800
+
+        self.pgconv = nn.Sequential(
+            nn.Conv3d(3, 64, (3,3,3), 1, 0),
+            nn.Conv3d(64, 32, (3,3,3), 1, 0),
+            nn.ReLU(),
+            nn.Conv3d(32, 32, (3,3,3), 1, 0),
             nn.ReLU(),
             nn.MaxPool3d((1, 2, 2), (1, 2, 2)),
-            nn.Conv3d(64, 128, 3, 1),
+            nn.Conv3d(32, 16, (3,3,3), 1, 1),
             nn.ReLU(),
-            nn.MaxPool3d((2, 2, 2), (2, 2, 2)))
-        self.pgconv = nn.Sequential(
-            nn.Conv3d(128, 64, 3, 2, 0),
+            nn.Conv3d(16, 16, (3, 3, 3), 1, 0),
             nn.ReLU(),
-            nn.Conv3d(64, 16, 1, 1, 1),
-            nn.Sigmoid(),
-        )
+            nn.MaxPool3d((1, 2, 2), (1, 2, 2)),
+            nn.Conv3d(16, 4, (3, 3, 3), 1, 0),
+            nn.ReLU(),
+            nn.Conv3d(4, 4, (3, 3, 3), 1, 0),
+            nn.ReLU(),
+            nn.MaxPool3d((1, 2, 2), (1, 2, 2)),
+            nn.Conv3d(4, 1, (3, 3, 3), 1, 0),
+            nn.ReLU(),
+            # nn.Conv3d(4, 4, (3, 3, 3), 1, 0),
+            # nn.ReLU(),
+            nn.MaxPool3d((1, 2, 2), (1, 2, 2))
+            )
+
         self.fc = nn.Sequential(
-            nn.Linear(2304, 526),
-            nn.Sigmoid(),
-            nn.Linear(526, 248),
+            nn.Linear(self.fc_size, 64),
             nn.ReLU(),
-            nn.Linear(248, 15),
+            nn.Linear(64, 15),
         )
         self.sm = nn.Sigmoid()
 
@@ -38,14 +50,12 @@ class ContextualBanditNet(nn.Module):
     # nn.Linear(64, 10),
     # nn.Softmax())
     def forward(self, x):
-        #         x = F.relu(self.conv1(x))
-        #         x = F.max_pool2d(x, 2, 2)
-        #         x = F.relu(self.conv2(x))
-        #         x = F.max_pool2d(x, 2, 2)
-        # print("SHAPE", x)
-        x = self.features(x)
+
         x = self.pgconv(x)
-        x = x.view(-1)
+        print(x.size())
+
+        x = x.view(-1, self.fc_size)
+        # print(x.size())
         x = self.fc(x)
         #print("BEFORE SOFTMAX:, ", x)
         x = self.sm(x)
@@ -66,3 +76,11 @@ def _(layer, in_shape):
     return util.Flops(10000)
     # FIXME: This is wrong if we add fields to Flops tuple
     return util.Flops(f1.macc + f2.macc)
+
+if __name__ == "__main__":
+    input_shape = (3, 16, 368, 368)
+    input = torch.randn(input_shape)
+    net = ContextualBanditNet().cuda()
+    # print(net)
+    from torchsummary import summary
+    summary(net, input_shape, device="cuda")

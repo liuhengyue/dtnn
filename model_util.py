@@ -1,4 +1,5 @@
 import torch.nn as nn
+import types
 def freeze(m):
     for p in m.parameters():
         p.requires_grad = False

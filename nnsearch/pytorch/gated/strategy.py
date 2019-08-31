@@ -92,11 +92,15 @@ class CountGate(nn.Module, metaclass=abc.ABCMeta):
     c = self.count( x )
     if not self.training and not self.gate_during_eval:
       g = Variable(torch.ones( batch_size, n ).type_as(x.data))
+      # print("eval mode: ", g)
     else:
       log.debug( "c=%s", c )
       g = relax.gate_matrix_from_count.apply( c, n )
       g = self._arrange_gate_matrix( g )
       log.debug( "g=%s", g )
+      # print("train/test mode: ", g)
+    # g is probably on different device from x, make sure they are on same one
+    g = g.to(x.device)
     return g
     
 class NestedCountGate(CountGate):
@@ -111,10 +115,52 @@ class NestedCountGate(CountGate):
   """
   def __init__( self, *args, **kwargs ):
     super().__init__( *args, **kwargs )
-  def set_control( self, u ):
-    self._u = u
+  # When training gatedchainnetwork, an error will occur:
+  # 'NestedCountGate' has no attribute 'set_control'
+  # it does not need this, since it will activate the first c components
+  # given the number of count, so u is not used
+  # def set_control( self, u ):
+  #   self._u = u
   def _arrange_gate_matrix( self, g ):
     return g
+
+
+class NestedCountFromUGate(CountGate):
+    """
+    Let C_n be the set of active components, where n = |C_n|. For the
+    `NestedGate` strategy, C_{n-1} \subset C_n.
+
+    Parameters:
+      `nactive_fn`: `batch_size` -> integer in {0, ..., ncomponents} [batch_size]
+      `normalize`: Divide the 0-1 gate matrix by the number of active components
+      `gate_during_eval`: Enable dropout during evaluation phase
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _arrange_gate_matrix(self, g):
+        return g
+
+    def set_control(self, u):
+        self._u = u
+
+    def forward( self, x ):
+        batch_size = x.size(0)
+        n = self.ncomponents
+        c = self.count( self._u)
+        if not self.training and not self.gate_during_eval:
+            g = Variable(torch.ones( batch_size, n ).type_as(x.data))
+          # print("eval mode: ", g)
+        else:
+            log.debug( "c=%s", c )
+            g = relax.gate_matrix_from_count.apply( c, n )
+            g = self._arrange_gate_matrix( g )
+            log.debug( "g=%s", g )
+          # print("train/test mode: ", g)
+        # g is probably on different device from x, make sure they are on same one
+        g = g.to(x.device)
+        return g
 
 class RandomPermutationCountGate(CountGate):
   def __init__( self, *args, **kwargs ):
@@ -123,7 +169,7 @@ class RandomPermutationCountGate(CountGate):
   def _arrange_gate_matrix( self, g ):
     # Different permutation for each row
     perms = [torch.randperm(g.size(1)) for _ in range(g.size(0))]
-    p = Variable(torch.stack( perms, dim=0 ).type_as(g.data).long())
+    p = torch.stack( perms, dim=0 ).type_as(g.data).long()
     return torch.gather(g, 1, p)
     
 # ----------------------------------------------------------------------------
@@ -285,8 +331,9 @@ class ProportionToCount(nn.Module):
     d = self._maxval - self._minval + 1
     log.debug( "ProportionToCount: range: [%s, %s] (%d)",
                self._minval, self._maxval, d )
-    max_tensor = torch.Tensor( [self._maxval] ).type_as(u.data)
-    c = torch.min( self._minval + torch.floor(u * d), Variable(max_tensor) )
+    max_tensor = torch.tensor( [self._maxval], device=u.device ).type_as(u.data)
+
+    c = torch.min( self._minval + torch.floor(u * d), max_tensor)
     log.debug( "ProportionToCount.c: %s", c )
     # c = torch.min( self._minval + torch.floor(u * d), self._maxval )
     return c

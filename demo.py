@@ -41,8 +41,8 @@ def preprocess_cam_frame(oriImg, boxsize):
     return output_img
 
 def cam_demo():
-    pretrained_weights = "ckpt/cpm_r3_model_epoch1240.pth"
-    full_net = GestureNet(num_refinement=3, weights_file=pretrained_weights)
+    pretrained_weights = "ckpt/cpm_r3_model_epoch1540.pth"
+    full_net = GestureNet(num_refinement=0, weights_file=pretrained_weights)
     full_net.eval()
     full_net.heatmap_net = full_net.heatmap_net.cuda()
     cam = cv2.VideoCapture(0)
@@ -54,16 +54,16 @@ def cam_demo():
 
         pred = full_net.heatmap_net.forward(img_tensor)
         final_stage_heatmaps = pred[0,-1,:,:,:].cpu().numpy()
-        kpts = get_kpts(final_stage_heatmaps, t=0.3)
+        kpts = get_kpts(final_stage_heatmaps, t=0.1)
         draw = draw_paint(test_img, kpts, None)
         # draw = test_img
         cv2.imshow('demo', draw.astype(np.uint8))
-        cv2.waitKey(100)
-        if cv2.waitKey(100) == ord('q'): break
+        # cv2.waitKey(1)
+        if cv2.waitKey(1) == ord('q'): break
 
 
 if __name__ == "__main__":
-    pretrained_weights = "ckpt/cpm_r3_model_epoch1340.pth"
+    pretrained_weights = "ckpt/cpm_r3_model_epoch1540.pth"
     full_net = GestureNet(num_refinement=3, weights_file=pretrained_weights)
     full_net.eval()
     # # full_net.heatmap_net = full_net.heatmap_net.cuda()

@@ -30,6 +30,7 @@ from nnsearch.pytorch.rl.env.solar import SolarEpisodeLogger
 from nnsearch.pytorch.rl.policy import *
 from nnsearch.pytorch.rl.dqn import *
 from nnsearch.statistics import *
+from nnsearch.pytorch.checkpoint import CheckpointManager
 from nnsearch.pytorch.gated.module import BlockGatedConv3d, BlockGatedConv2d, BlockGatedFullyConnected
 from network.demo_model import GestureNet
 
@@ -38,6 +39,8 @@ import shape_flop_util as util
 import model_util
 
 from modules.utils import latest_checkpoints
+from tqdm import tqdm
+from datetime import datetime
 
 ##################################################################################################
 
@@ -58,7 +61,7 @@ class GatedNetworkApp:
         self.checkpoint_mgr = CheckpointManager(output=".", input=".")
 
     def make_optimizer(self, parameters):
-        return optim.SGD(parameters, lr=0.0001, momentum=0.9)
+        return optim.SGD(parameters, lr=0.00001, momentum=0.9)
         # return optim.Adam( parameters, lr=.01 )
 
     def gated_network(self):
@@ -68,28 +71,67 @@ class GatedNetworkApp:
 # RL Learners
 class PGLearner():
 
-    def __init__(self, pgnet, data_network, train_dataset, reward, optimizer, to_device, device_ids=[1]):
+    def __init__(self, pgnet, data_network, train_dataset, test_dataset, reward, optimizer, to_device, device_ids=[1]):
         self.pgnet = pgnet
         self.loss = self.PGloss
         self.reward = reward
         self.train_dataset = train_dataset
+        self.test_dataset = test_dataset
         self.optimizer = optimizer
         self.to_device = to_device
         self.network = data_network
         self.device_ids = device_ids
-        ngate_levels = 15
-        inc = 1.0 / (ngate_levels - 1)
-        self._us = torch.tensor([i * inc for i in range(ngate_levels)], requires_grad=False).to(self.device_ids[0])
+        self.ngate_levels = 10
+        inc = 1.0 / self.ngate_levels
+        # u = 0 does not make sense
+        # if 10 levels: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
+        self._us = torch.tensor([i * inc for i in range(1, self.ngate_levels+1)], requires_grad=False).to(self.device_ids[0])
+        # print(self._us)
 
-    def PGloss(self, y, reward):
-        return torch.mean(-torch.log(y + .000001) * reward)
+    def PGloss(self, yhat, reward):
+        # return torch.mean(-torch.log(yhat + .000001) * reward)
+        # https://github.com/pytorch/examples/blob/master/reinforcement_learning/reinforce.py
+        return torch.mean(-yhat * reward)
 
     def eval_policy(self):
-        pass
+        self.pgnet.eval()
+
+        nclasses = len(self.test_dataset.dataset.class_names)
+        batch_size = self.test_dataset.batch_size
+        class_correct = [0.0] * nclasses
+        class_total = [0.0] * nclasses
+        u_history = 0.0
+        with torch.no_grad():
+            for _, data in enumerate(tqdm(self.test_dataset)):
+                inputs, labels = data
+                inputs = inputs.to(self.device_ids[0])
+                labels = labels.to(self.device_ids[0])
+                output = self.pgnet(inputs)
+                a = torch.argmax(output, 1)
+                u = torch.take(self._us, a)
+                u_history += torch.sum(u).item()
+                # print("---- u ----", u)
+                yhat, gs = self.network(inputs, u)
+                _, predicted = torch.max(yhat.data, 1)
+                # print("---- pred ----", predicted)
+                c = (predicted == labels).cpu().numpy()
+                for i in range(len(c)):
+                    label = labels[i]
+                    class_correct[label] += c[i]
+                    class_total[label] += 1
+            log.info("controller network test, total %s [%s/%s]", sum(class_correct) / sum(class_total), sum(class_correct), sum(class_total))
+            log.info("Average u: %s", u_history / sum(class_total))
+            for i in range(nclasses):
+                if class_total[i] > 0:
+                    log.info("'%s' : %s [%s/%s]", self.test_dataset.dataset.class_names[i],
+                             class_correct[i] / class_total[i], class_correct[i], class_total[i])
+                else:
+                    log.info("'%s' : None", self.test_dataset.dataset.class_names[i])
 
     # return EvaluationPolicy( self.env, self.dqn )
     def training_episode(self, rng, episode):
         self._train_batch(episode)
+
 
     def _train_batch(self, episode):
         for param_group in self.optimizer.param_groups:
@@ -97,28 +139,38 @@ class PGLearner():
 
         # with training_mode( True, self ):
         self.optimizer.zero_grad()
-
+        running_corrects = 0.0
+        running_loss = 0.0
+        running_reward = 0.0
+        u_history = 0.0
+        exploration_rate = math.e ** (-0.5 * (episode + 1))
+        log.info("Exploration rate: %s", exploration_rate)
         # cuda = torch.cuda.is_available()
         # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        for i, data in enumerate(self.train_dataset):
+        for i, data in enumerate(tqdm(self.train_dataset)):
             inputs, labels = data
             inputs = inputs.to(self.device_ids[0])
             labels = labels.to(self.device_ids[0])
             output = self.pgnet(inputs)
-            print("**** output ****\n", output.size())
-            exploration_rate = math.e ** (-0.01 * episode)
+            # print("**** output ****\n", output.size())
+
+            # exploration_rate = 0.0
             randnum = np.random.uniform()
+            # print(randnum, exploration_rate)
             if randnum < exploration_rate:
-                a = torch.randint(0, 14, (output.size(0),), device=output.device)
-                print("RANDOM ACTION TAKEN")
+                a = torch.randint(0, self.ngate_levels, (output.size(0),), device=output.device)
+                # print("RANDOM ACTION TAKEN")
             else:
                 # a = output.argmax(0).item()
                 a = torch.argmax(output, 1)
-            print("------ a -----", a)
+                # print("Action from pgnet.")
+            # print("------ a -----", a)
             u = torch.take(self._us, a)
-            print("------ u ------", u)
+
+            u_history += torch.sum(u).item()
+            # print("------ u ------", u)
             if u is None:  # Network turned off
-                print("problem.step.yhat: None")
+                # print("problem.step.yhat: None")
                 yhat = None
                 gs = None
                 r = self.reward.reward(labels, yhat, gs)
@@ -132,14 +184,46 @@ class PGLearner():
                 #print("problem.step.yhat: %s", yhat.item())
                 r = self.reward.reward(labels, yhat, gs)
 
-            print("REWARD IS", r)
+
+
+            # print("REWARD IS", r)
             logits = torch.gather(output, 1, a.view(-1, 1)).view(-1)
-            print("logits: ", logits)
+            # print("logits: ", logits)
             loss = self.loss(logits, r)
-            print("LOSS", loss)
+
+            probs = torch.nn.Softmax(dim=1)(yhat)
+            preds = torch.max(probs, 1)[1]
+            batch_corrects = torch.sum(preds == labels.data).item()
+            running_corrects += batch_corrects
+            running_loss += loss.item()
+            running_reward += torch.mean(r).item()
+
+            if i % 10 == 0:
+                running_num = (i + 1) * self.train_dataset.batch_size
+                print("Running loss: ", running_loss / running_num)
+                print("Running reward: ", running_reward / running_num)
+                print("Running corrects: ", running_corrects / running_num)
+                print("Running average u: ", u_history / running_num)
+            if i % 400 == 0:
+                running_num = (i + 1) * self.train_dataset.batch_size
+                log.info("Step - %s", i)
+                log.info("Running loss: %s", running_loss / running_num)
+                log.info("Running reward: %s", running_reward / running_num)
+                log.info("Running corrects: %s", running_corrects / running_num)
+                log.info("Running average u: %s ", u_history / running_num)
+
+
+            # print("LOSS", loss)
             loss.backward()
             self.optimizer.step()
             self._finish_batch()
+
+        # end of epoch
+        running_num = len(self.train_dataset) * self.train_dataset.batch_size
+        log.info("End of epoch %s", episode)
+        log.info("Loss: %s", running_loss / running_num)
+        log.info("Reward: %s", running_reward / running_num)
+        log.info("Accuracy: %s", running_corrects / running_num)
 
     def _finish_batch(self):
         pass
@@ -163,10 +247,10 @@ class UsageAccuracyRewardModel:
         yhat = yhat.detach()
         with torch.no_grad():
             # gs is a list of gate matrix, each matrix is of (B, ncomponents)
-            print("yhat: ", yhat)
+            # print("yhat: ", yhat)
             confidence_levels = torch.nn.Softmax(dim=1)(yhat)
-            print("CONFIDENCE LEVELS:", confidence_levels * 100)
-            print("gs *********", [g[0].detach() for g in gs])
+            # print("CONFIDENCE LEVELS:", confidence_levels * 100)
+            # print("gs *********", [g[0].detach() for g in gs])
             # concatenated gate matrices of (B, 112(may vary))
             G = torch.cat([g[0] for g in gs], 1)
             # print("Test on gs: @@@@@@@@@@@@@@@@@", G.size(), G.requires_grad)
@@ -180,15 +264,19 @@ class UsageAccuracyRewardModel:
             # print("LIST FLOPS: ", len(list_flops))
             # print("FINAL DECISIONS: ", final_decisions)
             ratio_flops = flops_used / self.total_F
-            print("RATIO FLOPS", ratio_flops)
+            # print("RATIO FLOPS", ratio_flops)
             pred = torch.argmax(confidence_levels, dim=1)
             # print("before if: ", pred, y, pred.requires_grad)
             # print(y.view(-1, 1))
             # (B, 1) -> (B,) should be a better way
             gt_confidence_levels = torch.gather(confidence_levels, 1, y.view(-1, 1)).view(-1)
-            positive_r = 2 * gt_confidence_levels - ratio_flops
-            negative_r = -1 * ratio_flops
+            # positive_r = torch.max(gt_confidence_levels - ratio_flops,
+            #                        torch.zeros(gt_confidence_levels.size(), device=gt_confidence_levels.device))
+            positive_r = torch.exp(gt_confidence_levels - ratio_flops)
+            negative_r = -5 * torch.exp(ratio_flops)
             # print(positive_r, negative_r)
+            # print("Batch preds: ", (pred == y))
+            # print("Batch accuracy: ", torch.mean((pred == y).float()).item())
             r = torch.where(pred == y, positive_r, negative_r)
             return r
 
@@ -228,7 +316,7 @@ def initialize_weights(args):
 
 ######################################################################################
 class App(GatedNetworkApp):
-    def __init__(self):
+    def __init__(self, start_epoch=0, device_ids=["cpu"], mode="train"):
         #     parser = MyArgumentParser( description="RL control of gated networks",
         #       fromfile_prefix_chars="@", allow_abbrev=False )
         self.master_rng = random.Random(162)
@@ -247,20 +335,21 @@ class App(GatedNetworkApp):
 
         seed = next_seed()
         #super().init( self.args )
-        self.checkpoint_mgr = CheckpointManager(output=".", input=".")
+        self.checkpoint_mgr = CheckpointManager(output="ckpt/controller", input=".")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device_ids = [0]
+        self.device_ids = device_ids
+        self.data_parallel = True if len(device_ids) > 1 else False
         # self.device = "cpu"
         self.to_device = lambda t: t
-        self.init_data_network()
-        total, gated = self.data_network.flops((3, 16, 368, 368))
+        self.mode = mode
+        total, gated = self.init_data_network()
         self.all_flops = gated
         gtotal = sum(c.macc for m in gated for c in m)
-        print(total)
-        print(gtotal)
-        print(total - gtotal)
+        # print(total)
+        print("Total gated modules flops - {}".format(gtotal))
+        # print(total - gtotal)
         # self.init_dataset( self.args )
-        self.start_epoch = 0  # Might get overwritten if loading checkpoint
+        self.start_epoch = start_epoch
         self.init_data()
         self.controller_macc = self.init_learner()
 
@@ -270,8 +359,12 @@ class App(GatedNetworkApp):
         from torch.utils.data import DataLoader
         subset = ['No gesture', 'Swiping Down', 'Swiping Left', 'Swiping Right', 'Swiping Up']
         train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, subset=subset)
-        batch_size = 4
-        self.train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+        batch_size = 4 * len(self.device_ids)
+        self.train_dataset = DataLoader(train_data, batch_size=batch_size,
+                                        shuffle=True, drop_last=True)
+        test_data = VideoDataset(dataset='20bn-jester', split='val', clip_len=16, subset=subset)
+        batch_size = 8 * len(self.device_ids)
+        self.test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=False, drop_last=False)
 
     def init_learner(self):
         pgnet = ContextualBanditNet()
@@ -292,14 +385,28 @@ class App(GatedNetworkApp):
 
         #explore = make_explore()
         reward = self.make_reward_model()
-        self.learner = PGLearner(pgnet, self.data_network, self.train_dataset, reward, self.make_optimizer(pgnet.parameters()), self.to_device, self.device_ids)
+
 
         # First initialize parameters randomly because even when loading, the
         # feature network doesn't cover all of the parameters .
-        self.init_network_parameters(pgnet, from_file=None)
+        if self.start_epoch > 0 or self.mode == "test":
+            saved_controller_file = self.checkpoint_mgr.latest_checkpoints("ckpt/controller/", "controller_network")[0]
+        else:
+            saved_controller_file = None
+
+        self.init_network_parameters(pgnet, from_file=saved_controller_file)
+
         # self.init_network_parameters(features, from_file="/home/samyakp/Desktop/rl-solar-models/cifar10_resnet				# self.init_network_parameters(features, from_file="/home/samyakp/Desktop/rl-solar-models/cifar10_resnet8_model_150.pkl" )8_model_150.pkl" )
         #self.init_network_parameters(features, from_file="/home/samyak/Desktop/throttledemo/cpm_r3_model_epoch2000.pth")
-        return util.flops(pgnet, (512, 4, 46, 46)).macc
+        flops = util.flops(pgnet, (3, 16, 368, 368)).macc
+        print("Controller network flops - {}".format(flops))
+        if len(self.device_ids) > 1:
+            pgnet = torch.nn.DataParallel(pgnet, device_ids=self.device_ids)
+            print("Policy network - using multi-gpus: ", self.device_ids)
+
+        self.learner = PGLearner(pgnet, self.data_network, self.train_dataset, self.test_dataset, reward, self.make_optimizer(pgnet.parameters()), self.to_device, self.device_ids)
+
+        return flops
 
     def init_network_parameters(self, network, from_file=None):
         if from_file is not None:
@@ -321,14 +428,20 @@ class App(GatedNetworkApp):
         #           self.parser.error( "--load-checkpoint and --load-feature-network are"
         #                              " mutually exclusive" )
         # from_file = "/home/samyak/Desktop/rl-solar-models/cifar10_densenet_nested_model_310.pkl"#self.args.load_data_network
-        from_file = latest_checkpoints("ckpt/gated_raw_c3d/")[0]
+        from_file = self.checkpoint_mgr.latest_checkpoints("ckpt/gated_raw_c3d/", "model")[0]
 
         #         if self.args.load_checkpoint is not None:
         #           from_file = self.checkpoint_mgr.get_checkpoint_file(
         #             "data_network", self.args.load_checkpoint )
         #           self.start_epoch = self.checkpoint_mgr.epoch_of_model_file( from_file )
         self.init_gated_network_parameters(self.data_network, from_file)
+        total, gated = self.data_network.flops((3, 16, 368, 368))
         self.data_network.to(self.device_ids[0])
+        if len(self.device_ids) > 1:
+            self.data_network = torch.nn.DataParallel(self.data_network, device_ids=self.device_ids)
+            print("Data network - using multi-gpus: ", self.device_ids)
+
+        return total, gated
 
     def make_reward_model(self):
         return UsageAccuracyRewardModel(self.data_network, self.all_flops, self.device_ids)
@@ -363,35 +476,33 @@ class App(GatedNetworkApp):
         return Tbar.mean(), Vbar.mean()
 
     def checkpoint(self, elapsed_episodes, force_eval=False):
-        #         milestone = (force_eval
-        #                      or (elapsed_episodes % self.args.checkpoint_interval == 0))
-        milestone = True
-
-        def save_fn(name, network):
-            self.checkpointkpoint_mgr.save_checkpoint(
-                name, network, elapsed_episodes,
-                data_parallel=self.args.data_parallel, persist=milestone)
+        checkpoint_interval = 1
+        milestone = (force_eval and (elapsed_episodes % checkpoint_interval == 0))
 
         # self.learner.apply_to_modules( save_fn )
-        # save_fn( "data_network", self.data_network )
+        if elapsed_episodes % checkpoint_interval == 0:
+            self.checkpoint_mgr.save_checkpoint(
+                "controller_network", self.learner.pgnet, elapsed_episodes,
+                data_parallel=self.data_parallel, persist=True)
 
-        if milestone:
-            # Format is important for log parsing
-            print("* Episode %s", elapsed_episodes)
-
-            eval_policy = self.learner.eval_policy()
-            eval_episodes = 3  # 5
-            eval_episode_length = 5  # 1000
-            tmean, vmean = self.evaluate(eval_policy,
-                                         eval_episodes, eval_episode_length)
-            print("* eval.vmean: %s", vmean)
-            print("* eval.tmean: %s", tmean)
+        # if milestone:
+        #     # Format is important for log parsing
+        #     print("* Episode %s", elapsed_episodes)
+        #
+        #     eval_policy = self.learner.eval_policy()
+        #     eval_episodes = 3  # 5
+        #     eval_episode_length = 5  # 1000
+        #     tmean, vmean = self.evaluate(eval_policy,
+        #                                  eval_episodes, eval_episode_length)
+        #     print("* eval.vmean: %s", vmean)
+        #     print("* eval.tmean: %s", tmean)
 
     #         if self.args.post_checkpoint_hook is not None:
     #           os.system( self.args.post_checkpoint_hook )
     def main(self):
         def set_epoch(epoch_idx, nbatches):
             print("training: epoch: %s; nbatches: %s", epoch_idx, nbatches)
+            log.info("training: epoch: %s", epoch_idx)
 
         #           for hp in self.hyperparameters:
         #             hp.set_epoch( epoch_idx, nbatches )
@@ -401,26 +512,30 @@ class App(GatedNetworkApp):
             for hp in self.hyperparameters:
                 hp.set_batch(batch_idx)
                 print(hp)
+        if self.mode == "train":
+            print("==================== Start ====================")
+            start = self.start_epoch
+            print("start: epoch: %s", start)
+            # Save initial model if not resuming
+            # if self.args.load_checkpoint is None:
+            # self.checkpoint( 0 )
+            # Training loops
+            train_episodes = 10
+            for ep in range(start, start + train_episodes):
+                print("EPISODE NUMBER: ", ep)
+                set_epoch(ep, nbatches=1)
+                # Update learning rate
+                # for param_group in self.learner.optimizer.param_groups:
+                #     param_group["lr"] = self.args.learning_rate()
+                self.learner.training_episode(
+                    self.train_rng, ep)
 
-        print("==================== Start ====================")
-        start = self.start_epoch
-        print("start: epoch: %s", start)
-        # Save initial model if not resuming
-        # if self.args.load_checkpoint is None:
-        # self.checkpoint( 0 )
-        # Training loops
-        train_episodes = 1
-        for ep in range(start, start + train_episodes):
-            print("EPISODE NUMBER: ", ep)
-            set_epoch(ep, nbatches=1)
-            # Update learning rate
-            for param_group in self.learner.optimizer.param_groups:
-                break
-                param_group["lr"] = self.args.learning_rate()
-            self.learner.training_episode(
-                self.train_rng, ep)
+                self.checkpoint( ep+1 )
+                # eval after each epoch
+                # self.learner.eval_policy()
+        elif self.mode == "test":
+            self.learner.eval_policy()
 
-        # self.checkpoint( ep+1 )
     # Save final model if we haven't done so already
     # checkpoint_interval = 2
 
@@ -428,59 +543,21 @@ class App(GatedNetworkApp):
     #   self.checkpoint( train_episodes, force_eval=True )
 
 
-class CheckpointManager:
-    def __init__(self, *, output, input=None):
-        self.output = output
-        self.input = input
-
-    def model_file(self, directory, prefix, epoch, suffix=""):
-        filename = "{}_{}.pkl{}".format(prefix, epoch, suffix)
-        return os.path.join(directory, filename)
-
-    def latest_checkpoints(self, directory, name):
-        return glob.glob(os.path.join(directory, "{}_*.pkl.latest".format(name)))
-
-    def epoch_of_model_file(self, path):
-        m = re.match(".*_([0-9]+)\\.pkl(\\.latest)?", os.path.basename(path)).group(1)
-        return int(m)
-
-    def load_parameters(self, path, network, strict=True, skip=None, map_location=None):
-        if skip is None:
-            skip = lambda param_name: False
-
-        with open(path, "rb") as fin:
-            state_dict = torch.load(fin, map_location="cpu")
-
-        own_state = network.state_dict()
-        for name, param in state_dict.items():
-            if name in own_state:
-                # log.verbose( "Load %s", name )
-                if skip(name):
-                    # log.verbose( "Skipping module" )
-                    continue
-                if isinstance(param, Parameter):
-                    # backwards compatibility for serialized parameters
-                    param = param.data
-                try:
-                    own_state[name].copy_(param)
-                except Exception:
-                    raise RuntimeError('While copying the parameter named {}, '
-                                       'whose dimensions in the model are {} and '
-                                       'whose dimensions in the checkpoint are {}.'
-                                       .format(name, own_state[name].size(), param.size()))
-            elif strict:
-                raise KeyError("unexpected key '{}' in state_dict".format(name))
-            else:
-                # log.warning( "unexpected key '{}' in state_dict".format(name) )
-                pass
-        missing = set(own_state.keys()) - set(state_dict.keys())
-        missing = [k for k in missing if not skip(k)]
-        if len(missing) > 0:
-            if strict:
-                raise KeyError("missing keys in state_dict: {}".format(missing))
-            else:
-                #print( "missing keys in state_dict: {}".format(missing) )
-                pass
 ###########################################################################
-app = App()
-app.main()
+if __name__ == "__main__":
+    # Logger setup
+    # mylog.add_log_level("VERBOSE", logging.INFO - 5)
+    # mylog.add_log_level("MICRO", logging.DEBUG - 5)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    # Need to set encoding or Windows will choke on ellipsis character in
+    # PyTorch tensor formatting
+    mode = "test"
+    experiment_name = 'throttle_demo_' + mode
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    log_path = os.path.join("logs", experiment_name + '_' + timestamp + '.log')
+    handler = logging.FileHandler(log_path, "w", "utf-8")
+    handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
+    root_logger.addHandler(handler)
+    app = App(start_epoch=0, device_ids=[0, 1, 2, 3], mode=mode)
+    app.main()

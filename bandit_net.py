@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 import shape_flop_util as util
+from nnsearch.pytorch.torchx import *
 
 class ContextualBanditNet(nn.Module):
     '''
@@ -11,48 +12,51 @@ class ContextualBanditNet(nn.Module):
     def __init__(self, context_network=None):
         super(ContextualBanditNet, self).__init__()
 
-        self.fc_size = 800
+        self.ngate_levels = 10
+        inc = 1.0 / self.ngate_levels
+        # u = 0 does not make sense
+        # if 10 levels: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
+        self._us = torch.tensor([i * inc for i in range(1, self.ngate_levels + 1)], requires_grad=False)
+
+        self.fc_size = 23 * 23 * 8
 
         self.pgconv = nn.Sequential(
-            nn.Conv3d(3, 64, (3,3,3), 1, 0),
-            nn.Conv3d(64, 32, (3,3,3), 1, 0),
+            nn.Conv3d(3, 64, (3,3,3), 1, 1),
             nn.ReLU(),
-            nn.Conv3d(32, 32, (3,3,3), 1, 0),
+            nn.MaxPool3d((2, 2, 2), (2, 2, 2)),
+            nn.Conv3d(64, 32, (3,3,3), 1, 1),
             nn.ReLU(),
-            nn.MaxPool3d((1, 2, 2), (1, 2, 2)),
-            nn.Conv3d(32, 16, (3,3,3), 1, 1),
-            nn.ReLU(),
-            nn.Conv3d(16, 16, (3, 3, 3), 1, 0),
-            nn.ReLU(),
-            nn.MaxPool3d((1, 2, 2), (1, 2, 2)),
-            nn.Conv3d(16, 4, (3, 3, 3), 1, 0),
-            nn.ReLU(),
-            nn.Conv3d(4, 4, (3, 3, 3), 1, 0),
-            nn.ReLU(),
-            nn.MaxPool3d((1, 2, 2), (1, 2, 2)),
-            nn.Conv3d(4, 1, (3, 3, 3), 1, 0),
-            nn.ReLU(),
-            # nn.Conv3d(4, 4, (3, 3, 3), 1, 0),
+            # nn.Conv3d(64, 64, (3,3,3), 1, 1),
             # nn.ReLU(),
-            nn.MaxPool3d((1, 2, 2), (1, 2, 2))
+            nn.MaxPool3d((2, 2, 2), (2, 2, 2)),
+            nn.Conv3d(32, 32, (3,3,3), 1, 1),
+            nn.ReLU(),
+            # nn.Conv3d(32, 32, (3, 3, 3), 1, 1),
+            # nn.ReLU(),
+            nn.MaxPool3d((2, 2, 2), (2, 2, 2)),
+            nn.Conv3d(32, 16, (3, 3, 3), 1, 1),
+            nn.ReLU(),
+            # nn.Conv3d(16, 16, (3, 3, 3), 1, 1),
+            # nn.ReLU(),
+            nn.MaxPool3d((2, 2, 2), (2, 2, 2)),
+            nn.Conv3d(16, 8, (3, 3, 3), 1, 1),
+            nn.ReLU(),
+            # nn.Conv3d(8, 8, (3, 3, 3), 1, 1),
+            # nn.ReLU(),
+            # nn.MaxPool3d((2, 2, 2), (2, 2, 2))
             )
 
         self.fc = nn.Sequential(
             nn.Linear(self.fc_size, 64),
             nn.ReLU(),
-            nn.Linear(64, 15),
+            nn.Linear(64, 10),
         )
         self.sm = nn.Sigmoid()
 
-    # self.lstm = nn.RNN(self.input_dim , self.hidden_dim, self.layer_dim, batch_first=True)
-    # self.features = context_network
-    # self.q = nn.Sequential(
-    # nn.Linear(64, 10),
-    # nn.Softmax())
     def forward(self, x):
 
         x = self.pgconv(x)
-        print(x.size())
+        # print(x.size())
 
         x = x.view(-1, self.fc_size)
         # print(x.size())
@@ -61,21 +65,24 @@ class ContextualBanditNet(nn.Module):
         x = self.sm(x)
         #print("AFTER SOFTMAX:, ", x)
 
-        # print("SHAPE BEFORE FLATTEN", x.shape)
-        # x = x[0].view(-1)
-        # print(x.shape)
-        #         h0 = autograd.Variable(torch.randn(self.layer_dim, x.size(0), self.hidden_dim))
-        #         x, hidden = self.lstm(x, h0)
+
         return x  # , hidden
 
 
 @util.flops.register(ContextualBanditNet)
-def _(layer, in_shape):
-    # f1 = flops( layer.features, in_shape )
-    # f2 = flops( layer.q, (1, 64) )
-    return util.Flops(10000)
-    # FIXME: This is wrong if we add fields to Flops tuple
-    return util.Flops(f1.macc + f2.macc)
+def _(net, in_shape):
+    total_macc = 0.0
+    for m in net.pgconv:
+        if isinstance(m, nn.Conv3d):
+            total_macc += util.flops(m, in_shape).macc
+        in_shape = output_shape(m, in_shape)
+
+    for m in net.fc:
+        if isinstance(m, nn.Linear):
+            total_macc += util.flops(m, in_shape).macc
+        in_shape = output_shape(m, in_shape)
+    return util.Flops(total_macc)
+
 
 if __name__ == "__main__":
     input_shape = (3, 16, 368, 368)
@@ -84,3 +91,4 @@ if __name__ == "__main__":
     # print(net)
     from torchsummary import summary
     summary(net, input_shape, device="cuda")
+    print(util.flops(net, (3, 16, 368, 368)))

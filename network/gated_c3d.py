@@ -309,8 +309,9 @@ class GatedC3D(GatedChainBranchNetwork):
                 total_macc += util.flops(m, in_shape).macc
                 in_shape = output_shape(m, in_shape)
                 #print("CALCULATING SHAPE", in_shape)
-        print("TOTAL FLOPS", gated_macc)
+
         total_macc += sum(sum(c.macc for c in m) for m in gated_macc)
+        print("TOTAL FLOPS", total_macc)
         return (total_macc, gated_macc)
 
 def C3dDataNetwork(in_shape=(3, 16, 368, 368)):
@@ -368,6 +369,7 @@ if __name__ == "__main__":
 
     net = C3dDataNetwork(in_shape=(3,16,368,368)).cuda()
     net.eval()
+    net.flops((3, 16, 368, 368))
     # print(net)
 
     summary(net, [(3, 16, 368, 368), (1,)], device="cuda")

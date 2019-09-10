@@ -7,7 +7,7 @@ import re
 import shlex
 import shutil
 import sys
-
+import nnsearch.logging as mylog
 import torch
 from   torch.autograd import Variable
 import torch.nn as nn
@@ -17,7 +17,7 @@ from   torch.nn.parameter import Parameter
 import torch.optim as optim
 
 log = logging.getLogger( __name__ )
-
+mylog.add_log_level("VERBOSE", logging.INFO - 5)
 # ----------------------------------------------------------------------------
 
 class CheckpointManager:
@@ -93,24 +93,32 @@ class CheckpointManager:
       state_dict = torch.load( fin, map_location="cpu" )
 
     own_state = network.state_dict()
+
+    def load_layer_by_name(name, param):
+      log.verbose("Load %s", name)
+
+      if isinstance(param, Parameter):
+        # backwards compatibility for serialized parameters
+        param = param.data
+      try:
+        own_state[name].copy_(param)
+      except Exception:
+        raise RuntimeError('While copying the parameter named {}, '
+                           'whose dimensions in the model are {} and '
+                           'whose dimensions in the checkpoint are {}.'
+                           .format(name, own_state[name].size(), param.size()))
+
     for name, param in state_dict.items():
       if name in own_state:
-        log.verbose( "Load %s", name )
-        if skip( name ):
-          log.verbose( "Skipping module" )
+        if skip(name):
+          log.verbose("Skipping module")
           continue
-        if isinstance(param, Parameter):
-          # backwards compatibility for serialized parameters
-          param = param.data
-        try:
-          own_state[name].copy_(param)
-        except Exception:
-          raise RuntimeError('While copying the parameter named {}, '
-                             'whose dimensions in the model are {} and '
-                             'whose dimensions in the checkpoint are {}.'
-                             .format(name, own_state[name].size(), param.size()))
+        load_layer_by_name(name, param)
       elif strict:
         raise KeyError( "unexpected key '{}' in state_dict".format(name) )
+      elif "module." in name:
+        new_name = name.replace("module.", "")
+        load_layer_by_name(new_name, param)
       else:
         log.warning( "unexpected key '{}' in state_dict".format(name) )
     
@@ -121,3 +129,4 @@ class CheckpointManager:
         raise KeyError( "missing keys in state_dict: {}".format(missing) )
       else:
         log.warning( "missing keys in state_dict: {}".format(missing) )
+    log.info("Loaded model from %s", path)

@@ -208,7 +208,17 @@ def _( layer, input_shape ):
   for m in layer.children():
     input_shape = output_shape( m, input_shape )
   return input_shape
-    
+
+@output_shape.register(nn.MaxPool3d)
+def _(layer, input_shape):
+    out_channels = input_shape[0]
+    return _output_shape_Conv(3, input_shape, out_channels,
+                              layer.kernel_size, layer.stride, layer.padding, layer.dilation, False)
+
+@output_shape.register(nn.Conv3d)
+def _(layer, input_shape):
+    return _output_shape_Conv(3, input_shape, layer.out_channels,
+                              layer.kernel_size, layer.stride, layer.padding, layer.dilation, False)
 # ----------------------------------------------------------------------------
 # resource cost
 

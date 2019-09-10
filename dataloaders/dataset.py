@@ -414,17 +414,19 @@ class VideoDataset(Dataset):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from torch.utils.data import DataLoader
-    subset = ['No gesture', 'Thumb Down', 'Thumb Up', 'Swiping Left', 'Swiping Right']
-    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=2, preprocess=False, subset=subset)
+    subset = ['No gesture', 'Swiping Down', 'Swiping Up', 'Swiping Left', 'Swiping Right']
+    train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, preprocess=False, subset=subset)
     train_loader = DataLoader(train_data, batch_size=2, shuffle=True, num_workers=1)
 
     for i, sample in enumerate(train_loader):
         inputs = sample[0]
         labels = sample[1]
         print(inputs.size())
-        print(inputs)
-        print(labels)
-        frame_0 = inputs[0, :, 0, :, :]
-        plt.imshow( frame_0.permute(1, 2, 0).numpy() / 255)
-        plt.show()
+        print(torch.min(inputs))
+        print(torch.max(inputs))
+        # print(inputs)
+        # print(labels)
+        # frame_0 = inputs[0, :, 0, :, :]
+        # plt.imshow( frame_0.permute(1, 2, 0).numpy() / 255)
+        # plt.show()
         break

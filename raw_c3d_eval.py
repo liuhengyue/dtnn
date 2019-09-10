@@ -128,7 +128,7 @@ if __name__ == "__main__":
     ### GPU support ###
     cuda = torch.cuda.is_available()
     # cuda = False
-    device_ids = [1, 2, 3] if cuda else None
+    device_ids = [0, 1, 2, 3] if cuda else None
     # device_ids = [1]
     if cuda:
         net = net.cuda(device_ids[0])
@@ -180,7 +180,8 @@ if __name__ == "__main__":
 
     ######################### eval #######################
     # u_grid = [0.8, 0.85, 0.9, 0.95]
-    u_grid = [0.25, 0.5, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99]
+    # u_grid = [0.25, 0.5, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99]
+    u_grid = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     train_epochs = 50
     seed = 1
     eval_after_epoch = True

@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 import shape_flop_util as util
 from nnsearch.pytorch.torchx import *
+import numpy as np
 
 class ContextualBanditNet(nn.Module):
     '''
@@ -82,6 +83,35 @@ def _(net, in_shape):
             total_macc += util.flops(m, in_shape).macc
         in_shape = output_shape(m, in_shape)
     return util.Flops(total_macc)
+
+
+class ManualController():
+    def __init__(self):
+        self.history = np.array([0.5])
+        self.discount = 0.9
+
+    def add_to_history(self, pred):
+        # add a prediction to controller's history
+        # 'No Gesture' - 0 everytime it receives a 'No Gesture' class, it add
+        # a zero to the history; else add a one
+        score = np.array([0.0]) if pred == "No gesture" else np.array([1.0])
+        self.history = self.history * self.discount
+        self.history = np.concatenate((self.history, score))
+
+        # reset if too much history
+        if len(self.history) > 100:
+            self.reset()
+
+    def get_utilization(self):
+        # return a high value if prediction has changed
+        if self.history[-1] == 1.0:
+            return torch.tensor([1.0])
+        else:
+            return torch.tensor([sum(self.history) / len(self.history)])
+
+    def reset(self):
+        self.history = np.array([0.5])
+
 
 
 if __name__ == "__main__":

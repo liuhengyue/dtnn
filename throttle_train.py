@@ -41,6 +41,7 @@ import model_util
 from modules.utils import latest_checkpoints
 from tqdm import tqdm
 from datetime import datetime
+from collections import Counter
 
 ##################################################################################################
 
@@ -82,10 +83,10 @@ class PGLearner():
         self.network = data_network
         self.device_ids = device_ids
         self.ngate_levels = 10
-        inc = 1.0 / self.ngate_levels
+        self.inc = 1.0 / self.ngate_levels
         # u = 0 does not make sense
         # if 10 levels: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
-        self._us = torch.tensor([i * inc for i in range(1, self.ngate_levels+1)], requires_grad=False).to(self.device_ids[0])
+        self._us = torch.tensor([i * self.inc for i in range(1, self.ngate_levels+1)], requires_grad=False).to(self.device_ids[0])
         # print(self._us)
 
     def PGloss(self, yhat, reward):
@@ -101,6 +102,9 @@ class PGLearner():
         class_correct = [0.0] * nclasses
         class_total = [0.0] * nclasses
         u_history = 0.0
+        u_bins = {}
+        for i in range(0, self.ngate_levels):
+            u_bins[i] = 0
         with torch.no_grad():
             for _, data in enumerate(tqdm(self.test_dataset)):
                 inputs, labels = data
@@ -109,6 +113,8 @@ class PGLearner():
                 output = self.pgnet(inputs)
                 a = torch.argmax(output, 1)
                 u = torch.take(self._us, a)
+                for k in a.cpu().numpy():
+                    u_bins[k] += 1
                 u_history += torch.sum(u).item()
                 # print("---- u ----", u)
                 yhat, gs = self.network(inputs, u)
@@ -121,6 +127,7 @@ class PGLearner():
                     class_total[label] += 1
             log.info("controller network test, total %s [%s/%s]", sum(class_correct) / sum(class_total), sum(class_correct), sum(class_total))
             log.info("Average u: %s", u_history / sum(class_total))
+            log.info("Running u bins: %s", u_bins)
             for i in range(nclasses):
                 if class_total[i] > 0:
                     log.info("'%s' : %s [%s/%s]", self.test_dataset.dataset.class_names[i],
@@ -142,6 +149,9 @@ class PGLearner():
         running_corrects = 0.0
         running_loss = 0.0
         running_reward = 0.0
+        u_bins = {}
+        for i in range(0, self.ngate_levels):
+            u_bins[i] = 0
         u_history = 0.0
         exploration_rate = math.e ** (-0.5 * (episode + 1))
         log.info("Exploration rate: %s", exploration_rate)
@@ -166,6 +176,9 @@ class PGLearner():
                 # print("Action from pgnet.")
             # print("------ a -----", a)
             u = torch.take(self._us, a)
+
+            for k in a.cpu().numpy():
+                u_bins[k] += 1
 
             u_history += torch.sum(u).item()
             # print("------ u ------", u)
@@ -204,6 +217,7 @@ class PGLearner():
                 print("Running reward: ", running_reward / running_num)
                 print("Running corrects: ", running_corrects / running_num)
                 print("Running average u: ", u_history / running_num)
+                print("Running u bins: ", u_bins)
             if i % 400 == 0:
                 running_num = (i + 1) * self.train_dataset.batch_size
                 log.info("Step - %s", i)
@@ -211,6 +225,7 @@ class PGLearner():
                 log.info("Running reward: %s", running_reward / running_num)
                 log.info("Running corrects: %s", running_corrects / running_num)
                 log.info("Running average u: %s ", u_history / running_num)
+                log.info("Running u bins: %s", u_bins)
 
 
             # print("LOSS", loss)
@@ -256,7 +271,6 @@ class UsageAccuracyRewardModel:
             # print("Test on gs: @@@@@@@@@@@@@@@@@", G.size(), G.requires_grad)
             # arrays = [gs[i][0][0].cpu().numpy() for i in range(len(gs))]
             # final_decisions = np.concatenate([array for array in arrays])
-            # TODO: check the flops for each batch
             # flops used for each input of a batch (B, )
             flops_used = torch.sum(G * self.F, 1)
 
@@ -272,8 +286,9 @@ class UsageAccuracyRewardModel:
             gt_confidence_levels = torch.gather(confidence_levels, 1, y.view(-1, 1)).view(-1)
             # positive_r = torch.max(gt_confidence_levels - ratio_flops,
             #                        torch.zeros(gt_confidence_levels.size(), device=gt_confidence_levels.device))
-            positive_r = torch.exp(gt_confidence_levels - ratio_flops)
-            negative_r = -5 * torch.exp(ratio_flops)
+            # positive_r = torch.exp(gt_confidence_levels - ratio_flops)
+            positive_r = 5 * torch.pow((0.5 - gt_confidence_levels) * (ratio_flops - 0.5) + 0.2, 2)
+            negative_r = -1 * torch.exp(ratio_flops)
             # print(positive_r, negative_r)
             # print("Batch preds: ", (pred == y))
             # print("Batch accuracy: ", torch.mean((pred == y).float()).item())
@@ -552,12 +567,12 @@ if __name__ == "__main__":
     root_logger.setLevel(logging.INFO)
     # Need to set encoding or Windows will choke on ellipsis character in
     # PyTorch tensor formatting
-    mode = "test"
+    mode = "train"
     experiment_name = 'throttle_demo_' + mode
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     log_path = os.path.join("logs", experiment_name + '_' + timestamp + '.log')
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=0, device_ids=[0, 1, 2, 3], mode=mode)
+    app = App(start_epoch=5, device_ids=[0, 1, 2, 3], mode=mode)
     app.main()

@@ -10,7 +10,7 @@ from network.gated_cpm_mobilenet import GatedMobilenet, GatedStage
 import configparser
 from dataloaders.cmu_hand_data import CMUHand
 from network.gated_c3d import C3dDataNetwork
-from bandit_net import ContextualBanditNet
+from bandit_net import ContextualBanditNet, ManualController
 from nnsearch.pytorch.checkpoint import CheckpointManager
 import random
 import torch.nn as nn
@@ -178,6 +178,12 @@ def gesture_net_demo():
     plt.show()
 
 def throttle_demo():
+
+    run_prediction = True
+    cuda = True
+    use_controller = False
+    use_fixed_rule_controller = True
+
     def latest_checkpoints(directory, name):
         return glob.glob(os.path.join(directory, "{}_*.pkl.latest".format(name)))
 
@@ -198,16 +204,18 @@ def throttle_demo():
     checkpoint_mgr = CheckpointManager(output=".", input=".")
     # gated network
     net = C3dDataNetwork()
+    checkpoint_mgr.load_parameters(pretrained_c3d_file, net, strict=True)
+    net.eval()
     # print(before)
+    # create a hard fixed-rule controller
+    fixed_controller = ManualController()
     # controller network
     controller = ContextualBanditNet()
-    checkpoint_mgr.load_parameters(pretrained_c3d_file, net, strict=True)
+
     checkpoint_mgr.load_parameters(pretrained_controller_file, controller, strict=True)
-    net.eval()
+
     controller.eval()
-    run_prediction = True
-    cuda = True
-    use_controller = True
+
     if cuda:
         net = net.cuda(1)
         controller = controller.cuda(1)
@@ -238,6 +246,9 @@ def throttle_demo():
                 states = controller(seq_input)
                 a = torch.argmax(states, 1)
                 u = torch.take(controller._us, a)
+
+            elif use_fixed_rule_controller:
+                u = fixed_controller.get_utilization().cuda(1)
             else:
                 u = torch.tensor([1.0]).cuda(1) if cuda else torch.tensor([1.0])
 
@@ -250,6 +261,7 @@ def throttle_demo():
             score = scores.detach().cpu().numpy()[0]
             predicted_classes = [label_to_class[idx] for idx in predicted][0]
             u_val = u.item()
+            fixed_controller.add_to_history(predicted_classes)
             # print(scores)
             # print(predicted_classes)
             # display text on the output

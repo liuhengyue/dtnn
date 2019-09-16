@@ -14,8 +14,10 @@ class GestureNet():
     For this network, all the init parameters should be seperate into two groups for the two sub-networks.
     """
 
-    def __init__(self, num_refinement=3, dropout=0.0, gate_heatmap=False, weights_file=None, **kwargs):
+    def __init__(self, num_refinement=3, dropout=0.0, gate_heatmap=False, weights_file=None,
+                 use_c3d=False, **kwargs):
 
+        self.use_c3d = use_c3d
         self.gate_heatmap = gate_heatmap
         self.heatmap_net_pars = self.make_heatmap_net()
         self.c3d_pars = self.make_c3d_net()
@@ -28,8 +30,8 @@ class GestureNet():
             self.heatmap_net.load_pretrained_weights(weights_file)
         self.heatmap_net.eval()
         self.set_no_grad()
-
-        self.c3d_net = GatedC3D(self.c3d_pars["gate"], self.c3d_pars["in_shape"],
+        if use_c3d:
+            self.c3d_net = GatedC3D(self.c3d_pars["gate"], self.c3d_pars["in_shape"],
                                           self.c3d_pars["num_classes"],
                                           self.c3d_pars["c3d"], self.c3d_pars["fc"],
                                           dropout=dropout)
@@ -74,7 +76,8 @@ class GestureNet():
 
     def eval(self):
         self.heatmap_net.eval()
-        self.c3d_net.eval()
+        if self.use_c3d:
+            self.c3d_net.eval()
 
     def make_heatmap_net(self):
         # it should return a dict as the input to GestureNet

@@ -19,38 +19,47 @@ class ContextualBanditNet(nn.Module):
         # if 10 levels: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
         self._us = torch.tensor([i * inc for i in range(1, self.ngate_levels + 1)], requires_grad=False)
 
-        self.fc_size = 23 * 23 * 8
+        self.fc_size = 363
 
         self.pgconv = nn.Sequential(
-            nn.Conv3d(3, 64, (3,3,3), 1, 1),
+            nn.Conv3d(3, 32, (3,7,7), 1, 1),
             nn.ReLU(),
-            nn.MaxPool3d((2, 2, 2), (2, 2, 2)),
-            nn.Conv3d(64, 32, (3,3,3), 1, 1),
+            nn.Conv3d(32, 32, (3,7,7), 2, 1),
             nn.ReLU(),
-            # nn.Conv3d(64, 64, (3,3,3), 1, 1),
-            # nn.ReLU(),
-            nn.MaxPool3d((2, 2, 2), (2, 2, 2)),
-            nn.Conv3d(32, 32, (3,3,3), 1, 1),
+            nn.Conv3d(32, 32, (3, 7, 7), 1, 0),
             nn.ReLU(),
-            # nn.Conv3d(32, 32, (3, 3, 3), 1, 1),
-            # nn.ReLU(),
-            nn.MaxPool3d((2, 2, 2), (2, 2, 2)),
-            nn.Conv3d(32, 16, (3, 3, 3), 1, 1),
+            nn.Conv3d(32, 32, (3,3,3), 2, 1),
             nn.ReLU(),
-            # nn.Conv3d(16, 16, (3, 3, 3), 1, 1),
-            # nn.ReLU(),
-            nn.MaxPool3d((2, 2, 2), (2, 2, 2)),
-            nn.Conv3d(16, 8, (3, 3, 3), 1, 1),
+            nn.Conv3d(32, 16, (3, 3, 3), (1, 2, 2), 1),
             nn.ReLU(),
-            # nn.Conv3d(8, 8, (3, 3, 3), 1, 1),
-            # nn.ReLU(),
-            # nn.MaxPool3d((2, 2, 2), (2, 2, 2))
+            nn.Conv3d(16, 16, (3, 3, 3), (1, 2, 2), 1),
+            nn.ReLU(),
+            nn.Conv3d(16, 1, (3, 3, 3), (1, 2, 2), 1),
+            nn.ReLU(),
             )
 
+        # self.pgconv = nn.Sequential(
+        #     nn.Conv3d(3, 64, (3, 3, 3), 1, 1),
+        #     nn.ReLU(),
+        #     nn.Conv3d(64, 128, (3, 3, 3), 2, 1),
+        #     nn.ReLU(),
+        #     nn.Conv3d(128, 256, (3, 3, 3), 1, 0),
+        #     nn.ReLU(),
+        #     nn.Conv3d(256, 128, (3, 3, 3), 2, 1),
+        #     nn.ReLU(),
+        #     nn.Conv3d(128, 64, (3, 3, 3), (1, 2, 2), 1),
+        #     nn.ReLU(),
+        #     nn.Conv3d(64, 32, (3, 3, 3), (1, 2, 2), 1),
+        #     nn.ReLU(),
+        #     nn.Conv3d(32, 1, (3, 3, 3), (1, 2, 2), 1),
+        #     nn.ReLU(),
+        # )
+
+
         self.fc = nn.Sequential(
-            nn.Linear(self.fc_size, 64),
+            nn.Linear(self.fc_size, 256),
             nn.ReLU(),
-            nn.Linear(64, 10),
+            nn.Linear(256, 10),
         )
         self.sm = nn.Sigmoid()
 
@@ -60,10 +69,10 @@ class ContextualBanditNet(nn.Module):
         # print(x.size())
 
         x = x.view(-1, self.fc_size)
-        # print(x.size())
         x = self.fc(x)
-        #print("BEFORE SOFTMAX:, ", x)
-        x = self.sm(x)
+        # x = self.sm(x)
+
+        # x = x.view(-1, 5, 10)
         #print("AFTER SOFTMAX:, ", x)
 
 

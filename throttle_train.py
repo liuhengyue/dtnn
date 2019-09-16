@@ -62,7 +62,7 @@ class GatedNetworkApp:
         self.checkpoint_mgr = CheckpointManager(output=".", input=".")
 
     def make_optimizer(self, parameters):
-        return optim.SGD(parameters, lr=0.00001, momentum=0.9)
+        return optim.SGD(parameters, lr=0.000001, momentum=0.9)
         # return optim.Adam( parameters, lr=.01 )
 
     def gated_network(self):
@@ -87,12 +87,13 @@ class PGLearner():
         # u = 0 does not make sense
         # if 10 levels: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
         self._us = torch.tensor([i * self.inc for i in range(1, self.ngate_levels+1)], requires_grad=False).to(self.device_ids[0])
+        self.ce = torch.nn.CrossEntropyLoss(reduction='none')
         # print(self._us)
 
     def PGloss(self, yhat, reward):
         # return torch.mean(-torch.log(yhat + .000001) * reward)
         # https://github.com/pytorch/examples/blob/master/reinforcement_learning/reinforce.py
-        return torch.mean(-yhat * reward)
+        return torch.mean(-torch.log(yhat) * reward)
 
     def eval_policy(self):
         self.pgnet.eval()
@@ -161,6 +162,9 @@ class PGLearner():
             inputs, labels = data
             inputs = inputs.to(self.device_ids[0])
             labels = labels.to(self.device_ids[0])
+            # generate psudo gt for RL, no gesture 0 [u = 0.1], others 9 [u = 1.0]
+            # u_gts = torch.where(labels == 0, torch.zeros(labels.size(), device=labels.device), 9 * torch.ones(labels.size(), device=labels.device)).long()
+            # size (B, 5 * 10)
             output = self.pgnet(inputs)
             # print("**** output ****\n", output.size())
 
@@ -168,16 +172,19 @@ class PGLearner():
             randnum = np.random.uniform()
             # print(randnum, exploration_rate)
             if randnum < exploration_rate:
-                a = torch.randint(0, self.ngate_levels, (output.size(0),), device=output.device)
+                state = torch.randint(0, self.ngate_levels, (output.size(0),), device=output.device)
                 # print("RANDOM ACTION TAKEN")
             else:
                 # a = output.argmax(0).item()
-                a = torch.argmax(output, 1)
-                # print("Action from pgnet.")
-            # print("------ a -----", a)
-            u = torch.take(self._us, a)
+                state = torch.argmax(output, 1)
+                # print(torch.max(output, 1)[0])
 
-            for k in a.cpu().numpy():
+            # a ranges from 0 to 9
+                print("#1 STATE -----------\n", state.detach().cpu().numpy())
+
+            u = torch.take(self._us, state)
+
+            for k in state.cpu().numpy():
                 u_bins[k] += 1
 
             u_history += torch.sum(u).item()
@@ -198,11 +205,21 @@ class PGLearner():
                 r = self.reward.reward(labels, yhat, gs)
 
 
-
-            # print("REWARD IS", r)
-            logits = torch.gather(output, 1, a.view(-1, 1)).view(-1)
+            if randnum > exploration_rate:
+                print("#2 REWARD -----------\n", r.detach().cpu().numpy())
+            # print("#3 PGNET OOUTPUT -----------\n", output.detach().cpu().numpy())
+            # take STATE as ground-truth
+            # print(output)
+            # print(state)
+            # print(r)
+            # logits = self.ce(output,  u_gts)
+            state_probs = torch.nn.Softmax(dim=1)(output)
+            picked_state_probs = torch.gather(state_probs, 1, state.view(-1, 1)).view(-1)
+            # ce_loss = self.ce(logits, u_gts)
+            # print(ce_loss)
+            # print("#4 CONTRIBUTING LOGITS -----------\n", logits.detach().cpu().numpy())
             # print("logits: ", logits)
-            loss = self.loss(logits, r)
+            loss = self.loss(picked_state_probs, r)
 
             probs = torch.nn.Softmax(dim=1)(yhat)
             preds = torch.max(probs, 1)[1]
@@ -251,19 +268,32 @@ class UsageAccuracyRewardModel:
         self.data_network = data_network
         self.F = self.total_flops(all_flops)
         self.total_F = torch.sum(self.F)
-
+        # self.ce = torch.nn.MSELoss(reduction='none')
+        self.ce = torch.nn.CrossEntropyLoss(reduction='none')
     def total_flops(self, all_flops):
         list_flops = [item for sublist in all_flops for item in sublist]
         list_flops = [i.macc for i in list_flops]
         return torch.tensor(list_flops, device=self.device_ids[0], requires_grad=False)
 
     def reward(self, y, yhat, gs):
-        # return torch.tensor(1.0)
+        '''
+
+        :param y: (B)
+        :param state_class: (B, 1)
+        :param yhat: (B, 5)
+        :param gs: list of G
+        :return: Reward (B,)
+        '''
         yhat = yhat.detach()
         with torch.no_grad():
             # gs is a list of gate matrix, each matrix is of (B, ncomponents)
             # print("yhat: ", yhat)
             confidence_levels = torch.nn.Softmax(dim=1)(yhat)
+
+            # state_confidence_levels = torch.nn.Softmax(dim=1)(state_class)
+            #
+            # state_pred = torch.argmax(state_confidence_levels, dim=1)
+
             # print("CONFIDENCE LEVELS:", confidence_levels * 100)
             # print("gs *********", [g[0].detach() for g in gs])
             # concatenated gate matrices of (B, 112(may vary))
@@ -279,7 +309,7 @@ class UsageAccuracyRewardModel:
             # print("FINAL DECISIONS: ", final_decisions)
             ratio_flops = flops_used / self.total_F
             # print("RATIO FLOPS", ratio_flops)
-            pred = torch.argmax(confidence_levels, dim=1)
+            pred_max, pred = torch.max(confidence_levels, dim=1)
             # print("before if: ", pred, y, pred.requires_grad)
             # print(y.view(-1, 1))
             # (B, 1) -> (B,) should be a better way
@@ -287,12 +317,35 @@ class UsageAccuracyRewardModel:
             # positive_r = torch.max(gt_confidence_levels - ratio_flops,
             #                        torch.zeros(gt_confidence_levels.size(), device=gt_confidence_levels.device))
             # positive_r = torch.exp(gt_confidence_levels - ratio_flops)
-            positive_r = 5 * torch.pow((0.5 - gt_confidence_levels) * (ratio_flops - 0.5) + 0.2, 2)
-            negative_r = -1 * torch.exp(ratio_flops)
-            # print(positive_r, negative_r)
-            # print("Batch preds: ", (pred == y))
-            # print("Batch accuracy: ", torch.mean((pred == y).float()).item())
-            r = torch.where(pred == y, positive_r, negative_r)
+            # different reward for 'No gesture' class
+            # ratio_flops = torch.where(y == 0, ratio_flops / 5, ratio_flops / 2)
+            # approximately -1 to 1
+
+            # put class weights on flops
+            # print(yhat)
+            # print(confidence_levels)
+            pred_diff = self.ce(confidence_levels, y)
+            # print(pred_diff * ratio_flops)
+            # print(ratio_flops)
+            positive_r = torch.exp((2.0 -  pred_diff) * (1.0 - ratio_flops))
+            # positive_r = torch.exp(ratio_flops * pred_diff) - 1.5
+            # negative_r less -> ratio_flops more -> pred_diff less
+            negative_r = -1 / torch.exp( - ratio_flops * pred_diff)
+
+            magnitude = torch.abs(torch.min(negative_r))
+
+            negative_r = negative_r / magnitude
+            # negative_r = pred_diff - 2 * ratio_flops
+            # batch normalize reward separately
+            positive_r = (positive_r - torch.mean(positive_r)) #/ (torch.std(positive_r) + 1e-16)
+
+            positive_r = positive_r / torch.max(positive_r)
+
+            # negative_r = (negative_r - torch.mean(negative_r)) / (torch.std(negative_r) + 1e-16)
+
+            r = torch.where((pred == y), positive_r, negative_r)
+            # r = (r - torch.mean(r)) / (torch.std(r) + 1e-16)
+
             return r
 
 class DiscreteActionModel:
@@ -331,29 +384,30 @@ def initialize_weights(args):
 
 ######################################################################################
 class App(GatedNetworkApp):
-    def __init__(self, start_epoch=0, device_ids=["cpu"], mode="train"):
+    def __init__(self, start_epoch=0, device_ids=["cpu"], batch_size_per_gpu=4, mode="train"):
         #     parser = MyArgumentParser( description="RL control of gated networks",
         #       fromfile_prefix_chars="@", allow_abbrev=False )
-        self.master_rng = random.Random(162)
-        self.train_rng = random.Random()
-        self.eval_rng = random.Random()
-
-        def next_seed(seed=None):
-            if seed is None:
-                seed = self.master_rng.randrange(2 ** 31 - 1)
-            random.seed(seed)
-            self.train_rng.seed(seed + 10)
-            self.eval_rng.seed(seed + 15)
-            numpy.random.seed(seed + 20)
-            torch.manual_seed(seed + 30)
-            return seed
-
-        seed = next_seed()
+        # self.master_rng = random.Random(162)
+        # self.train_rng = random.Random()
+        # self.eval_rng = random.Random()
+        #
+        # def next_seed(seed=None):
+        #     if seed is None:
+        #         seed = self.master_rng.randrange(2 ** 31 - 1)
+        #     random.seed(seed)
+        #     self.train_rng.seed(seed + 10)
+        #     self.eval_rng.seed(seed + 15)
+        #     numpy.random.seed(seed + 20)
+        #     torch.manual_seed(seed + 30)
+        #     return seed
+        #
+        # seed = next_seed()
         #super().init( self.args )
         self.checkpoint_mgr = CheckpointManager(output="ckpt/controller", input=".")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device_ids = device_ids
         self.data_parallel = True if len(device_ids) > 1 else False
+        self.batch_size_per_gpu = batch_size_per_gpu
         # self.device = "cpu"
         self.to_device = lambda t: t
         self.mode = mode
@@ -374,11 +428,11 @@ class App(GatedNetworkApp):
         from torch.utils.data import DataLoader
         subset = ['No gesture', 'Swiping Down', 'Swiping Left', 'Swiping Right', 'Swiping Up']
         train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, subset=subset)
-        batch_size = 4 * len(self.device_ids)
+        batch_size = self.batch_size_per_gpu * len(self.device_ids)
         self.train_dataset = DataLoader(train_data, batch_size=batch_size,
                                         shuffle=True, drop_last=True)
         test_data = VideoDataset(dataset='20bn-jester', split='val', clip_len=16, subset=subset)
-        batch_size = 8 * len(self.device_ids)
+        batch_size = 2 * self.batch_size_per_gpu * len(self.device_ids)
         self.test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=False, drop_last=False)
 
     def init_learner(self):
@@ -543,7 +597,9 @@ class App(GatedNetworkApp):
                 # for param_group in self.learner.optimizer.param_groups:
                 #     param_group["lr"] = self.args.learning_rate()
                 self.learner.training_episode(
-                    self.train_rng, ep)
+                    None, ep)
+                # self.learner.training_episode(
+                #     self.train_rng, ep)
 
                 self.checkpoint( ep+1 )
                 # eval after each epoch
@@ -574,5 +630,5 @@ if __name__ == "__main__":
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=5, device_ids=[0, 1, 2, 3], mode=mode)
+    app = App(start_epoch=0, device_ids=[0,1,2,3], batch_size_per_gpu=4, mode=mode)
     app.main()

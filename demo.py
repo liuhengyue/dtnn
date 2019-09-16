@@ -106,7 +106,7 @@ def draw_pointer(canvas, u):
 
 def cam_demo():
     pretrained_weights = "ckpt/cpm_r3_model_epoch1540.pth"
-    full_net = GestureNet(num_refinement=0, weights_file=pretrained_weights)
+    full_net = GestureNet(num_refinement=3, weights_file=pretrained_weights)
     full_net.eval()
     full_net.heatmap_net = full_net.heatmap_net.cuda()
     cam = cv2.VideoCapture(0)
@@ -118,7 +118,7 @@ def cam_demo():
 
         pred = full_net.heatmap_net.forward(img_tensor)
         final_stage_heatmaps = pred[0,-1,:,:,:].cpu().numpy()
-        kpts = get_kpts(final_stage_heatmaps, t=0.1)
+        kpts = get_kpts(final_stage_heatmaps, t=0.05)
         draw = draw_paint(test_img, kpts, None)
         # draw = test_img
         cv2.imshow('demo', draw.astype(np.uint8))
@@ -178,11 +178,13 @@ def gesture_net_demo():
     plt.show()
 
 def throttle_demo():
-
-    run_prediction = True
+    run_keypoints = True
+    run_prediction = False
     cuda = True
+    cuda_device = 0
     use_controller = False
     use_fixed_rule_controller = True
+
 
     def latest_checkpoints(directory, name):
         return glob.glob(os.path.join(directory, "{}_*.pkl.latest".format(name)))
@@ -200,31 +202,42 @@ def throttle_demo():
 
     pretrained_c3d_file = latest_checkpoints("ckpt/gated_raw_c3d/", "model")[0]
     pretrained_controller_file = latest_checkpoints("ckpt/controller/", "controller_network")[0]
-
     checkpoint_mgr = CheckpointManager(output=".", input=".")
-    # gated network
-    net = C3dDataNetwork()
-    checkpoint_mgr.load_parameters(pretrained_c3d_file, net, strict=True)
-    net.eval()
+    if run_prediction:
+        # gated network
+        net = C3dDataNetwork()
+        checkpoint_mgr.load_parameters(pretrained_c3d_file, net, strict=True)
+        net.eval()
     # print(before)
-    # create a hard fixed-rule controller
-    fixed_controller = ManualController()
-    # controller network
-    controller = ContextualBanditNet()
+    if use_fixed_rule_controller:
+        # create a hard fixed-rule controller
+        fixed_controller = ManualController()
+    elif use_controller:
+        # controller network
+        controller = ContextualBanditNet()
 
-    checkpoint_mgr.load_parameters(pretrained_controller_file, controller, strict=True)
+        checkpoint_mgr.load_parameters(pretrained_controller_file, controller, strict=True)
 
-    controller.eval()
+        controller.eval()
+    else:
+        controller = None
 
-    if cuda:
-        net = net.cuda(1)
-        controller = controller.cuda(1)
-        controller._us = controller._us.cuda(1)
+    if run_keypoints:
+        pretrained_weights = "ckpt/cpm_r3_model_epoch1540.pth"
+        full_net = GestureNet(num_refinement=3, weights_file=pretrained_weights)
+        full_net.eval()
+        if cuda:
+            full_net.heatmap_net = full_net.heatmap_net.cuda(cuda_device)
+
+    if cuda and run_prediction:
+        net = net.cuda(cuda_device)
+        controller = controller.cuda(cuda_device)
+        controller._us = controller._us.cuda(cuda_device)
     cam = cv2.VideoCapture(0)
     buffer = []
     canvas = np.ones((600, 368, 3), dtype=np.uint8) * 255
     draw_gauge(canvas)
-    predicted_classes = ''
+    predicted_classes = 'No gesture'
     u_val = 0.0
     score= 0.0
     while True:
@@ -234,12 +247,27 @@ def throttle_demo():
         input = (test_img.astype(np.float32) / 255.).transpose((2, 0, 1))
 
         img_tensor = torch.from_numpy(input)
+        if cuda:
+            img_tensor = img_tensor.cuda(cuda_device)
+
+        if run_keypoints:
+            kpt_input = (test_img[:, :, ::-1] / 255.).astype(np.float32)
+            kpt_input_tensor = transforms.ToTensor()(kpt_input).unsqueeze_(0)
+            if cuda:
+                kpt_input_tensor = kpt_input_tensor.cuda(cuda_device)
+            pred = full_net.heatmap_net.forward(kpt_input_tensor)
+            final_stage_heatmaps = pred[0, -1, :, :, :].cpu().numpy()
+            kpts = get_kpts(final_stage_heatmaps, t=0.05)
+            draw = draw_paint(test_img, kpts, None)
+            draw_image(tmp_canvas, draw)
+        else:
+            draw_image(tmp_canvas, test_img)
         buffer.append(img_tensor)
         if run_prediction and len(buffer) == 16:
             # prep the input tensor (1, 3, 16, 368, 368)
             seq_input = torch.stack(buffer, 1).unsqueeze_(0)
             if cuda:
-                seq_input = seq_input.cuda(1)
+                seq_input = seq_input.cuda(cuda_device)
             # print(seq_input.size())
             if use_controller:
                 # go through controller first
@@ -248,9 +276,9 @@ def throttle_demo():
                 u = torch.take(controller._us, a)
 
             elif use_fixed_rule_controller:
-                u = fixed_controller.get_utilization().cuda(1)
+                u = fixed_controller.get_utilization().cuda(cuda_device)
             else:
-                u = torch.tensor([1.0]).cuda(1) if cuda else torch.tensor([1.0])
+                u = torch.tensor([1.0]).cuda(cuda_device) if cuda else torch.tensor([1.0])
 
             print(u.item())
             yhat, _ = net(seq_input, u)
@@ -272,13 +300,16 @@ def throttle_demo():
             # print(buffer)
 
         # draw = test_img
+        # draw predictions
         cv2.putText(tmp_canvas, predicted_classes, (368 * 3 // 5, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0))
             
         cv2.putText(tmp_canvas, "Score: {:.2f}".format(score), (368 * 3 // 5, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0))
-        draw_image(tmp_canvas, test_img)
+
 
         # u_val = random.uniform(0, 1)
         draw_pointer(tmp_canvas, u_val)
+        # draw u
+        cv2.putText(tmp_canvas, "U: " + str(u_val), (75, 185), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0))
         cv2.imshow('demo', tmp_canvas)
         # cv2.waitKey(1)
         if cv2.waitKey(100) == ord('q'): break
@@ -299,6 +330,7 @@ def throttle_demo():
 
 if __name__ == "__main__":
     throttle_demo()
+    # cam_demo()
 
 
 

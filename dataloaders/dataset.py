@@ -30,12 +30,12 @@ class VideoDataset(Dataset):
             preprocess (bool): Determines whether to preprocess dataset. Default is False.
     """
 
-    def __init__(self, dataset='ucf101', split='train', clip_len=16, preprocess=False, subset=[]):
+    def __init__(self, dataset='ucf101', split='train', clip_len=16, preprocess=False, subset=[], resize_input=False):
         self.root_dir, self.output_dir = Path.db_dir(dataset)
         folder = os.path.join(self.output_dir, split)
         self.clip_len = clip_len
         self.split = split
-
+        self.resize_input = resize_input
         # The following three parameters are chosen as described in the paper section 4.1
         self.resize_height = 100
         self.resize_width = 160
@@ -105,10 +105,12 @@ class VideoDataset(Dataset):
         try:
             # Loading and preprocessing.
             buffer = self.load_frames(self.fnames[index])
-
-            # resize to 368 by 368
-            buffer = self.resize(buffer)
-            buffer = self.crop(buffer, self.clip_len, self.crop_size)
+            if self.resize_input:
+                # resize to 368 by 368
+                buffer = self.resize(buffer)
+                buffer = self.crop(buffer, self.clip_len, self.crop_size)
+            else:
+                buffer = self.time_crop(buffer, self.clip_len)
             labels = np.array(self.label_array[index])
 
             # if self.split == 'test':
@@ -378,7 +380,7 @@ class VideoDataset(Dataset):
             frame = np.array(cv2.imread(frame_name)).astype(np.float64)
             buffer[i] = frame
         # just crop the left part right now, size (t, h, w, 3)
-        buffer = buffer[:, :, :self.resize_height, :]
+        # buffer = buffer[:, :, :self.resize_height, :]
         return buffer
 
     def crop(self, buffer, clip_len, crop_size):
@@ -397,6 +399,14 @@ class VideoDataset(Dataset):
         buffer = buffer[time_index:time_index + clip_len,
                  height_index:height_index + crop_size,
                  width_index:width_index + crop_size, :]
+
+        return buffer
+
+    def time_crop(self, buffer, clip_len):
+        # randomly select time index for temporal jittering
+        time_padding = buffer.shape[0] - clip_len
+        time_index = np.random.randint(time_padding) if time_padding > 0 else 0
+        buffer = buffer[time_index:time_index + clip_len, :, :, :]
 
         return buffer
 

@@ -23,6 +23,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import random
+from collections import deque
 def preprocess_cam_frame(oriImg, boxsize):
     # print(oriImg.shape)
     # scale = boxsize / (oriImg.shape[0] * 1.0)
@@ -179,7 +180,7 @@ def gesture_net_demo():
 
 def throttle_demo():
     run_keypoints = True
-    run_prediction = False
+    run_prediction = True
     cuda = True
     cuda_device = 0
     use_controller = False
@@ -205,7 +206,7 @@ def throttle_demo():
     checkpoint_mgr = CheckpointManager(output=".", input=".")
     if run_prediction:
         # gated network
-        net = C3dDataNetwork()
+        net = C3dDataNetwork((3, 16, 100, 160))
         checkpoint_mgr.load_parameters(pretrained_c3d_file, net, strict=True)
         net.eval()
     # print(before)
@@ -231,8 +232,9 @@ def throttle_demo():
 
     if cuda and run_prediction:
         net = net.cuda(cuda_device)
-        controller = controller.cuda(cuda_device)
-        controller._us = controller._us.cuda(cuda_device)
+        if use_controller:
+            controller = controller.cuda(cuda_device)
+            controller._us = controller._us.cuda(cuda_device)
     cam = cv2.VideoCapture(0)
     buffer = []
     canvas = np.ones((600, 368, 3), dtype=np.uint8) * 255
@@ -244,7 +246,9 @@ def throttle_demo():
         tmp_canvas = canvas.copy()
         _, oriImg = cam.read()
         test_img = preprocess_cam_frame(oriImg, 368)
-        input = (test_img.astype(np.float32) / 255.).transpose((2, 0, 1))
+        c3d_input = cv2.resize(oriImg, (160, 100))
+        # print(c3d_input.shape)
+        input = (c3d_input.astype(np.float32) / 255.).transpose((2, 0, 1))
 
         img_tensor = torch.from_numpy(input)
         if cuda:
@@ -280,7 +284,7 @@ def throttle_demo():
             else:
                 u = torch.tensor([1.0]).cuda(cuda_device) if cuda else torch.tensor([1.0])
 
-            print(u.item())
+            # print(u.item())
             yhat, _ = net(seq_input, u)
             # print(yhat)
             probs = torch.nn.Softmax(dim=1)(yhat)
@@ -296,6 +300,7 @@ def throttle_demo():
 
             # pop the first frame
             # buffer.pop(0)
+            # del buffer[:8]
             buffer = []
             # print(buffer)
 
@@ -309,10 +314,10 @@ def throttle_demo():
         # u_val = random.uniform(0, 1)
         draw_pointer(tmp_canvas, u_val)
         # draw u
-        cv2.putText(tmp_canvas, "U: " + str(u_val), (75, 185), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0))
+        cv2.putText(tmp_canvas, "U: {:.2f}".format(u_val), (75, 185), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0))
         cv2.imshow('demo', tmp_canvas)
         # cv2.waitKey(1)
-        if cv2.waitKey(100) == ord('q'): break
+        if cv2.waitKey(1) == ord('q'): break
 
     # # test
     # inputs = torch.randn((1, 3, 16, 368, 368)).cuda()

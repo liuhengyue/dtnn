@@ -18,39 +18,8 @@ from tqdm import tqdm
 from network.demo_model import GestureNet
 from datetime import datetime
 import re
+from network.gated_c3d import C3dDataNetwork
 
-def c3d():
-    span_factor = 1
-
-    c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64 * span_factor, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 1, 128 * span_factor, 8), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 256 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
-
-    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512 * span_factor, 4)]
-
-    # non gated
-    # c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
-    #               GatedStage("conv", 3, 1, 1, 1, 128, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-    #               GatedStage("conv", 3, 1, 1, 2, 256, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-    #               GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-    #               GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
-    #
-    # fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
-
-    stages = {"c3d": c3d_stages, "fc": fc_stages}
-    gate = make_sequentialGate(stages)
-    # in_shape = (21, 16, 45, 45)
-    in_shape = (3, 16, 368, 368) # for raw input
-    num_classes = 5
-    c3d_pars = {"c3d": c3d_stages, "fc": fc_stages, "gate": gate,
-            "in_shape": in_shape, "num_classes": num_classes}
-
-    c3d_net = GatedC3D(c3d_pars["gate"], c3d_pars["in_shape"],
-                       c3d_pars["num_classes"], c3d_pars["c3d"], c3d_pars["fc"], dropout=0)
-
-    return c3d_net
 
 
 def evaluate(elapsed_epochs, learner, testloader, cuda_devices=None):
@@ -107,7 +76,7 @@ if __name__ == "__main__":
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
 
-    net = c3d()
+    net = C3dDataNetwork((3, 16, 100, 160))
     gate_network = net.gate
     ################### pre-trained
     pretrained = True
@@ -141,7 +110,7 @@ if __name__ == "__main__":
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 3 * len(device_ids)
+    batch_size = 24 * len(device_ids)
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
@@ -158,7 +127,8 @@ if __name__ == "__main__":
     import torch.optim as optim
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
-    learning_rate = 4e-5
+    # learning_rate = 4e-5
+    learning_rate = 4e-8
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -169,7 +139,9 @@ if __name__ == "__main__":
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=3, threshold=1e-2, eps=1e-9, verbose=True)
 
 
-    gate_control = uniform_gate(0.9)
+    # gate_control = uniform_gate(0.9)
+    # gate_control = uniform_gate(0.0)
+    gate_control = uniform_gate(0.5)
     # gate_control = constant_gate(1.0)
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)
@@ -179,7 +151,7 @@ if __name__ == "__main__":
 
     ######################### train #######################
     # start = 0
-    train_epochs = 50
+    train_epochs = 20
     seed = 1
     eval_after_epoch = False
     for epoch in range(start, start + train_epochs):

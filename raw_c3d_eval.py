@@ -17,40 +17,7 @@ import configparser
 from tqdm import tqdm
 from network.demo_model import GestureNet
 from datetime import datetime
-
-def c3d():
-    span_factor = 1
-
-    c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 1, 128 * span_factor, 8), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 256 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
-
-    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 4)]
-
-    # non gated
-    # c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
-    #               GatedStage("conv", 3, 1, 1, 1, 128, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-    #               GatedStage("conv", 3, 1, 1, 2, 256, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-    #               GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-    #               GatedStage("conv", 3, 1, 1, 2, 512, 1), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
-    #
-    # fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
-
-    stages = {"c3d": c3d_stages, "fc": fc_stages}
-    gate = make_sequentialGate(stages, gate_during_eval=True)
-    # in_shape = (21, 16, 45, 45)
-    in_shape = (3, 16, 368, 368) # for raw input
-    num_classes = 5
-    c3d_pars = {"c3d": c3d_stages, "fc": fc_stages, "gate": gate,
-            "in_shape": in_shape, "num_classes": num_classes}
-
-    c3d_net = GatedC3D(c3d_pars["gate"], c3d_pars["in_shape"],
-                       c3d_pars["num_classes"], c3d_pars["c3d"], c3d_pars["fc"],
-                       intermediate=None, dropout=0)
-
-    return c3d_net
+from network.gated_c3d import C3dDataNetwork
 
 
 def evaluate(u, learner, testloader, cuda_devices=None):
@@ -110,7 +77,7 @@ if __name__ == "__main__":
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
 
-    net = c3d()
+    net = C3dDataNetwork((3, 16, 100, 160))
     gate_network = net.gate
     ################### must load the model to eval
     # start = 11
@@ -144,7 +111,7 @@ if __name__ == "__main__":
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 6 * len(device_ids) if cuda else 1
+    batch_size = 30 * len(device_ids) if cuda else 1
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 

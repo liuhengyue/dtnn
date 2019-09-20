@@ -1,8 +1,36 @@
 # throttling-demo
 
-This is an initial README file for Latent AI throttle network demo.
+Latent AI throttle network demo.
 
-The demo is an end-to-end trainable gated neural network focus on single-hand keypoints detection and dynamic hand gesture recognition. The whole network consists of two sub-networks: one is a variant [Global Context for Convolutional Pose Machines](https://arxiv.org/pdf/1906.04104.pdf) based on original paper  [Convolutional Pose Machines](https://arxiv.org/pdf/1602.00134.pdf). Its implementation can be found [here](https://github.com/Daniil-Osokin/gccpm-look-into-person-cvpr19.pytorch).
+The demo is an end-to-end trainable throttleable neural network for dynamic hand gesture recognition. It consists of three main conponents: gated 3D Convolutional Neural Networks (C3D) data network for gesture recognition of five classes [Swiping left/right/up/down, no gesture], a small controller network providing utilization parameter for the data network, and single-hand keypoint estimation network as a add-on module. The demo also has a simple OpenCV visualization.
+
+
+## Usage
+
+To run the demo, just clone this repo, then go in the folder through terminal or any IDE of your choice, run `python demo.py`. By default, it will use one GPU and enable all the features. I have not write a requirements file for dependencies yet. 
+
+## Throttleable Neural Network
+
+The concepts and implementations take from this paper [Toward Runtime-Throttleable Neural Networks](https://arxiv.org/abs/1905.13179). For the specific implementation of demo, several attempts have been made. TNN requries convolutional and dense layers to be gated, so gated networks were implemented first. In this repo, there are a gated keypoint detection framework and gated C3D implemented. The experiments are mainly on widthwise nested sequential gates while other options are also available.
+
+## Gesture Recognition
+
+Gesture recognition framework is based on a basic [C3D](https://arxiv.org/abs/1412.0767) network with gated version implemented. Some implementations are from [here](https://github.com/jfzhang95/pytorch-video-recognition). The detailed structure is listed here: (todo)
+
+## Hand Keypoint Estimation
+
+Currently, the single-hand keypoints detection model is just used for hand keypoints visualization, but the contextual information can be used for building a data-driven controller. The implementation is based on a variant [Global Context for Convolutional Pose Machines](https://arxiv.org/pdf/1906.04104.pdf) of the original paper  [Convolutional Pose Machines](https://arxiv.org/pdf/1602.00134.pdf). Its implementation can be found [here](https://github.com/Daniil-Osokin/gccpm-look-into-person-cvpr19.pytorch).
+
+## File Structure
+
+The project file structure is listed here:
+
+ckpt/        Store the trained model files and checkpoints.
+dataloaders/  Scripts to pre-process and load different datasets.
+dataset/     Store different datasets.
+logs/       Store trainning and evaluation logs.
+modules/    Inside, `utils.py` is probably the most important file, which contains utility functions for gated network. Others are for keypoint estimation.
+network/    Different implementations of neural networks (gated and non-gated)
 
 ## Convolutional Pose Machines 
 

@@ -6,6 +6,15 @@ The demo is an end-to-end trainable throttleable neural network for dynamic hand
 
 
 ## Usage
+Download the pretrained weights from [latentai > sample-models > demo branch](https://gitlab.com/latentai/sample-models/tree/demo/demo). 
+
+Put `controller_network_2.pkl.latest` inside folder  `ckpt/controller`. 
+
+Put `cpm_r3_model_epoch1540.pth` inside `ckpt/`. 
+
+Put `model_110.pkl.latest` inside `ckpt/gated_raw_c3d`.
+
+Run `pip install -r requirements.txt` to install dependencies.
 
 To run the demo, just clone this repo, then go in the folder through terminal or any IDE of your choice, run `python demo.py`. By default, it will use one GPU and enable all the features. I have not write a requirements file for dependencies yet. 
 
@@ -15,86 +24,61 @@ The concepts and implementations take from this paper [Toward Runtime-Throttleab
 
 ## Gesture Recognition
 
-Gesture recognition framework is based on a basic [C3D](https://arxiv.org/abs/1412.0767) network with gated version implemented. Some implementations are from [here](https://github.com/jfzhang95/pytorch-video-recognition). The detailed structure is listed here: (todo)
+Gesture recognition framework is based on a basic [C3D](https://arxiv.org/abs/1412.0767) network with gated version implemented. Some implementations are from [here](https://github.com/jfzhang95/pytorch-video-recognition). Only five gesture classes are used.
+
+The detailed structure is listed here: (todo)
 
 ## Hand Keypoint Estimation
 
-Currently, the single-hand keypoints detection model is just used for hand keypoints visualization, but the contextual information can be used for building a data-driven controller. The implementation is based on a variant [Global Context for Convolutional Pose Machines](https://arxiv.org/pdf/1906.04104.pdf) of the original paper  [Convolutional Pose Machines](https://arxiv.org/pdf/1602.00134.pdf). Its implementation can be found [here](https://github.com/Daniil-Osokin/gccpm-look-into-person-cvpr19.pytorch).
+Currently, the single-hand keypoints detection model is just used for hand keypoints visualization, but the contextual information can be used for building a data-driven controller. The implementation is based on a variant [Global Context for Convolutional Pose Machines](https://arxiv.org/pdf/1906.04104.pdf) of the original paper  [Convolutional Pose Machines](https://arxiv.org/pdf/1602.00134.pdf). Its implementation can be found [here](https://github.com/Daniil-Osokin/gccpm-look-into-person-cvpr19.pytorch). Part of the implementations can also be found [here](https://github.com/HowieMa/CPM_Pytorch).
 
 ## File Structure
 
 The project file structure is listed here:
 
-ckpt/        Store the trained model files and checkpoints.
-dataloaders/  Scripts to pre-process and load different datasets.
-dataset/     Store different datasets.
-logs/       Store trainning and evaluation logs.
-modules/    Inside, `utils.py` is probably the most important file, which contains utility functions for gated network. Others are for keypoint estimation.
-network/    Different implementations of neural networks (gated and non-gated)
-
-## Convolutional Pose Machines 
-
-This is the Pytorch
-
-There are 7 files in this folder
-
---handpose_data_cpm.py    
-data loader for Hand Pose dataset
-    
---handpose_no_label.py  
-data loader for Hand Pose dataset without ground truth   
-    
---cpm.py   
-Pytorch cpm model 
-
---train.py    
---test.py 
---save.py  
---predict.py  
---conf.text         
-
-
-## usage 
-#### 1 train model  
-    python cpm_train.py   
-
-You may revise the variable in  **conf.text**    
-
->train_data_dir  =   
-train_label_dir =   
-learning_rate   = 8e-6     
-batch_size      = 16   
-epochs          = 50   
-begin_epoch     = 0   
-
-Thus change the path to your own datasets and  train CPM on your own 
-REMEMBER that you may implement new data loader for you own datasets. 
-
-After this, you will get models for several epoches.
-The models are saved in folder **ckpt/**  like 
-> ckpt/model_epoch10.pth 
-      
-
- 
-#### 2 test model   
-    python cpm_Test.py         
-    
-After running this, you will get PCK score for each epoch  
-You can select the best trained models
-  
-#### 3 save prediction results 
-    python cpm_save.py    
-
-After step 2, you will know which is the best epoch, 
-thus you should revise conf.text and change the value of **best_model**
- 
-    
-#### 4 apply models on datasets without ground truth
-    python cpm_predict.py    
-
-This step is for applying trained model on datasets without ground truth 
+| Folder/File | Description | Used in Demo |
+| ----------- | ----------- | ------------ |
+| ckpt/ | Store the trained model files and checkpoints. | Yes |
+| dataloaders/  |   Scripts to pre-process and load different datasets.| No |
+| dataset/   |    Store different datasets.| No |
+| logs/ |       Store trainning and evaluation logs.| No |
+| modules/ |    Inside, `utils.py` contains utility functions for gated network. Others are for keypoint estimation.| Yes |
+| network/ |  Different implementations of neural networks (gated and non-gated).| Yes |
+| nnsearch/ | Jesse's codes for throttleable NN (some changes are made). | Yes |
+| src/ | Some functions for displaying keypoint heatmap. | No |
+| visualization/ | Store local visualization outputs, images, etc. | No |
+| bandit_net.py | Controller network implementation. | Yes |
+| c3d_train.py | Original training script for video action recognition.| No |
+| conf.text | Configuration file for training/testing keypoint estimation. | No |
+| cpm_*.py | Keypoint estimation related scripts; the trained model is used for demo visualization. | No |
+| demo.py | The demo entry point. | Yes |
+| demo_train.py | Deprecated. This old demo structure uses keypoint heatmaps for gesture recognition. | No |
+| demo_train_cpm.py | Deprecated. This is for training gated CPM which is not working as expected. | No |
+| gate_test.py | Script for checking gated layer implementation. | No |
+| inference.py | Original inference script for video action recognition. | No |
+| model_util.py | Samyak's code copy from Jesse's nnsearch/ folder. | No |
+| mypath.py | Training configuration and paths for gesture recognition. | No |
+| policy.py | Samyak's code copy from Jesse's nnsearch/ folder on RL policy. | No |
+| qnet.py | Samyak's code example for contextual Q learning network. | No |
+| raw_c3d_*.py | The training/evaluation scripts for the demo's gesture recognition part. | Train |
+| shape_flop_util.py | Probably deprecated. Functions to Calculate the flops of defined layers.| No |
+| testthrottle.py | Deprecated. Samyak's original codes for controller. | No |
+| throttle_train.py | For training the controller network; currently not working well. | No |
+| train.py | Probably same with c3d_train.py. Original training script for video action recognition.| No |
+| weights_experiment.py | Speed test for gated structure using all zero/random weights on CPU/GPU. | No |
 
 
-## 
+
+
+## Dataset
+
+The dataset for training the keypoint estimation is from [CMU Hand Dataset](http://domedb.perception.cs.cmu.edu/handdb.html), both real and synthetic dataset are used.
+
+The dataset for training the gesture recognition model is from [20BN-jester V1](https://20bn.com/datasets/jester).
+
+## Demo
+
+
+
 
 

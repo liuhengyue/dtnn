@@ -78,7 +78,7 @@ The dataset for training the gesture recognition model is from [20BN-jester V1](
 
 ## Demo
 
-![](demo.gif)
+![](demo.gif)*Demo application interface (take a little time to load)*
 
 
 

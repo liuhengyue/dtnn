@@ -220,12 +220,12 @@ def C3dDataNetwork(in_shape=(3, 16, 368, 368)):
     span_factor = 1
 
     c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64 * span_factor, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 1, 128 * span_factor, 8), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 256 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
+                  GatedStage("conv", 3, 1, 1, 1, 128 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 256 * span_factor, 32), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 32), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 32), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
 
-    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512 * span_factor, 4)]
+    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512 * span_factor, 16)]
 
     # non gated
     # c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),

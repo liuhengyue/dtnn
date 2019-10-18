@@ -182,11 +182,26 @@ class GatedDataPathLearner(GatedNetworkLearner):
     self.gate_control = gate_control
     # give the u_stage, freeze the first c components
     if u_stage:
-      for gated_module in self.network._gated_modules:
+      u_stage_l, u_stage_r = u_stage
+      gated_modules = self.network.module._gated_modules \
+        if isinstance(self.network, torch.nn.DataParallel) else self.network._gated_modules
+      for gated_module in gated_modules:
+          # set all to false
+          for component in gated_module[0].components:
+            for p in component.parameters():
+              p.requires_grad = False
+
+      for gated_module in gated_modules:
           n = len(gated_module[0].components)
-          c = int(n * u_stage)
-          for i in range(c):
-              gated_module[0].components[i].requires_grad = False
+          # set active components to True
+          c_l = int(n * u_stage_l)
+          c_r = int(n * u_stage_r)
+          c_r = min(c_r + 1, n) if c_r == c_l else c_r
+          assert c_r > c_l, "Error: No active components."
+          for i in range(c_l, c_r):
+            for p in gated_module[0].components[i].parameters():
+              p.requires_grad = True
+
 
 
     

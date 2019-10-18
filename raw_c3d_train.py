@@ -79,7 +79,7 @@ if __name__ == "__main__":
     net = C3dDataNetwork((3, 16, 100, 160))
     gate_network = net.gate
     ################### pre-trained
-    pretrained = True
+    pretrained = False
     if pretrained:
         # start = 12
         # filename = model_file("ckpt/gated_raw_c3d/", start, ".latest")
@@ -141,8 +141,8 @@ if __name__ == "__main__":
 
     # gate_control = uniform_gate(0.9)
     # gate_control = uniform_gate(0.0)
-    gate_control = uniform_gate(0.7)
-    # gate_control = constant_gate(1.0)
+    # gate_control = uniform_gate(0.7)
+    gate_control = constant_gate(0.0)
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)
     criterion = None
@@ -151,22 +151,29 @@ if __name__ == "__main__":
 
     ######################### train #######################
     # start = 0
-    train_epochs = 20
+    train_epochs = 100
+    n_utilization_stages = 10
     seed = 1
     eval_after_epoch = False
+    u_stage_l = 0.0
     for epoch in range(start, start + train_epochs):
-        print("==== Train: Epoch %s: seed=%s", epoch, seed)
+        # u_stage starts from 0.1 up to 1.0
+        u_stage_r = (epoch + 11.) / (train_epochs + 11.)
+        print("==== Train: Epoch %s: u_stage=[%s, %s]", epoch, u_stage_l, u_stage_r)
         batch_idx = 0
         nbatches = math.ceil(len(train_data) / batch_size)
         learner.start_train(epoch, seed)
         running_corrects = 0.0
         running_loss = 0.0
+
+        learner.update_gate_control(constant_gate(u_stage_r), u_stage=(u_stage_l, u_stage_r))
+        u_stage_l = u_stage_r
         for i, data in enumerate(tqdm(train_dataset)):
             inputs, labels = data
             if cuda:
                 inputs = inputs.cuda(device_ids[0])
                 labels = labels.cuda(device_ids[0])
-            # generate intermidiate heatmaps
+
             yhat = learner.forward(i, inputs, labels)
             loss = learner.backward(i, yhat, labels)
             probs = nn.Softmax(dim=1)(yhat)
@@ -174,7 +181,7 @@ if __name__ == "__main__":
             batch_corrects = torch.sum(preds == labels.data).float()
             running_corrects += batch_corrects
             running_loss += loss.float()
-            if i % 500 == 0:
+            if i % 50 == 0:
                 running_num = (i + 1) * batch_size
                 step_loss = running_loss / running_num
                 step_accuracy = running_corrects / running_num

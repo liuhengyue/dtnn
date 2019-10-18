@@ -128,7 +128,7 @@ if __name__ == "__main__":
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
     # learning_rate = 4e-5
-    learning_rate = 4e-8
+    learning_rate = 4e-4
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     # gate_control = uniform_gate(0.9)
     # gate_control = uniform_gate(0.0)
-    gate_control = uniform_gate(0.5)
+    gate_control = uniform_gate(0.7)
     # gate_control = constant_gate(1.0)
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)

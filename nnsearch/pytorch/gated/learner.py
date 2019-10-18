@@ -166,7 +166,8 @@ class GatedDataPathLearner(GatedNetworkLearner):
   strategy for two-phase gated network training.
 
   """
-  def __init__( self, network, optimizer, learning_rate, gate_policy, gate_control, scheduler=None, **kwargs ):
+  def __init__( self, network, optimizer, learning_rate, gate_policy, gate_control,
+                scheduler=None, **kwargs ):
     super().__init__( network, optimizer, learning_rate, gate_policy, gate_control, **kwargs )
     self.scheduler = scheduler
 
@@ -177,8 +178,16 @@ class GatedDataPathLearner(GatedNetworkLearner):
   def scheduler_step(self, loss, epoch):
     self.scheduler.step(loss, epoch)
 
-  def update_gate_control(self, gate_control):
+  def update_gate_control(self, gate_control, u_stage=None):
     self.gate_control = gate_control
+    # give the u_stage, freeze the first c components
+    if u_stage:
+      for gated_module in self.network._gated_modules:
+          n = len(gated_module[0].components)
+          c = int(n * u_stage)
+          for i in range(c):
+              gated_module[0].components[i].requires_grad = False
+
 
     
 # ----------------------------------------------------------------------------

@@ -149,6 +149,8 @@ class NestedCountFromUGate(CountGate):
         batch_size = x.size(0)
         n = self.ncomponents
         c = self.count( self._u)
+        # print("Number of components: {}".format(n))
+        # print("Number of active components: {}".format(c))
         if not self.training and not self.gate_during_eval:
             g = Variable(torch.ones( batch_size, n ).type_as(x.data))
           # print("eval mode: ", g)

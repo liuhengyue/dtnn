@@ -76,7 +76,7 @@ if __name__ == "__main__":
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
 
-    net = C3dDataNetwork((3, 16, 100, 160))
+    net = C3dDataNetwork((3, 16, 100, 160), num_classes=27)
     gate_network = net.gate
     ################### pre-trained
     pretrained = False
@@ -87,7 +87,7 @@ if __name__ == "__main__":
         start = int(re.findall("\d+", os.path.basename(filename))[0])
         with open(filename, "rb") as f:
             state_dict = torch.load(f, map_location="cpu")
-            load_model(net, state_dict, load_gate=True, strict=True)
+            load_model(net, state_dict, load_gate=True, strict=False)
     else:
         start = 0
 
@@ -117,6 +117,7 @@ if __name__ == "__main__":
     # gesture dataset
     from dataloaders.dataset import VideoDataset
     subset = ['No gesture', 'Swiping Down', 'Swiping Up', 'Swiping Left', 'Swiping Right']
+    subset = None
     train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, subset=subset)
     train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
     test_data = VideoDataset(dataset='20bn-jester', split='val', clip_len=16, subset=subset)
@@ -151,14 +152,15 @@ if __name__ == "__main__":
 
     ######################### train #######################
     # start = 0
-    train_epochs = 100
+    train_epochs = 50
     n_utilization_stages = 10
     seed = 1
     eval_after_epoch = False
     u_stage_l = 0.0
     for epoch in range(start, start + train_epochs):
         # u_stage starts from 0.1 up to 1.0
-        u_stage_r = (epoch + 11.) / (train_epochs + 11.)
+        # u_stage_r = (epoch + 11.) / (train_epochs + 11.)
+        u_stage_r = (epoch + 6.) / (train_epochs + 6.)
         print("==== Train: Epoch %s: u_stage=[%s, %s]", epoch, u_stage_l, u_stage_r)
         batch_idx = 0
         nbatches = math.ceil(len(train_data) / batch_size)

@@ -100,10 +100,13 @@ def load_model(self, state_dict, load_gate=True, strict=True):
             try:
                 own_state[name].copy_(param)
             except Exception:
-                raise RuntimeError('While copying the parameter named {}, '
-                                   'whose dimensions in the model are {} and '
-                                   'whose dimensions in the checkpoint are {}.'
-                                   .format(name, own_state[name].size(), param.size()))
+                if strict:
+                    raise RuntimeError('While copying the parameter named {}, '
+                                       'whose dimensions in the model are {} and '
+                                       'whose dimensions in the checkpoint are {}.'
+                                       .format(name, own_state[name].size(), param.size()))
+                else:
+                    print("skip {}, dimension mismatch: {} in model, {} in checkpoint.".format(name, own_state[name].size(), param.size()))
         elif strict:
             raise KeyError('unexpected key "{}" in state_dict'
                            .format(name))

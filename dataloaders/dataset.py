@@ -54,7 +54,7 @@ class VideoDataset(Dataset):
                 self.preprocess()
 
         # check argument 'subset'  if use part of the classes
-        if len(subset) > 0:
+        if  subset is not None:
             print("Using a subset [{}] of dataset: {}".format(len(subset), subset))
         # Obtain all the filenames of files inside all the class folders
         # Going through each class folder one at a time
@@ -62,7 +62,12 @@ class VideoDataset(Dataset):
         for label in sorted(os.listdir(folder)):
             if label == ".DS_Store":
                 continue
-            if label in subset:
+            if subset is not None:
+                if label in subset:
+                    for fname in os.listdir(os.path.join(folder, label)):
+                        self.fnames.append(os.path.join(folder, label, fname))
+                        labels.append(label)
+            else:
                 for fname in os.listdir(os.path.join(folder, label)):
                     self.fnames.append(os.path.join(folder, label, fname))
                     labels.append(label)
@@ -89,8 +94,8 @@ class VideoDataset(Dataset):
                         f.writelines(str(id+1) + ' ' + label + '\n')
         elif dataset == '20bn-jester':
             # re log the label mapping
-            if len(subset) > 0 and os.path.exists('dataloaders/20bn-jester_labels.txt'):
-                os.remove('dataloaders/20bn-jester_labels.txt')
+            # if subset is not None and os.path.exists('dataloaders/20bn-jester_labels.txt'):
+            os.remove('dataloaders/20bn-jester_labels.txt')
             if not os.path.exists('dataloaders/20bn-jester_labels.txt'):
                 with open('dataloaders/20bn-jester_labels.txt', 'w') as f:
                     for id, label in enumerate(sorted(self.label2index)):

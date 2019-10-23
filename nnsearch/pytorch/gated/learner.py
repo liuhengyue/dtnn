@@ -201,7 +201,12 @@ class GatedDataPathLearner(GatedNetworkLearner):
           for i in range(c_l, c_r):
             for p in gated_module[0].components[i].parameters():
               p.requires_grad = True
-
+      # check the requires grad term
+      # for gated_module in gated_modules:
+      #     print(gated_module)
+      #     for component in gated_module[0].components:
+      #       for p in component.parameters():
+      #         print(p.requires_grad, end=' ')
 
 
     

@@ -41,7 +41,9 @@ def evaluate(u, learner, testloader, cuda_devices=None):
             yhat = learner.forward(batch_idx, images, labels)
             log.debug("eval.yhat: %s", yhat)
             # learner.measure(batch_idx, images, labels, yhat.data)
-            _, predicted = torch.max(yhat.data, 1)
+            probs = nn.Softmax(dim=1)(yhat)
+            predicted = torch.max(probs, 1)[1]
+            # _, predicted = torch.max(yhat.data, 1)
             log.debug("eval.labels: %s", labels)
             log.debug("eval.predicted: %s", predicted)
             c = (predicted == labels).cpu().numpy()
@@ -77,7 +79,7 @@ if __name__ == "__main__":
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
 
-    net = C3dDataNetwork((3, 16, 100, 160))
+    net = C3dDataNetwork((3, 16, 100, 160), num_classes=5)
     gate_network = net.gate
     ################### must load the model to eval
     # start = 11
@@ -95,7 +97,7 @@ if __name__ == "__main__":
     ### GPU support ###
     cuda = torch.cuda.is_available()
     # cuda = False
-    device_ids = [0, 1, 2, 3] if cuda else None
+    device_ids = [1, 2, 3] if cuda else None
     # device_ids = [1]
     if cuda:
         net = net.cuda(device_ids[0])
@@ -111,13 +113,14 @@ if __name__ == "__main__":
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 30 * len(device_ids) if cuda else 1
+    batch_size = 80 * len(device_ids) if cuda else 1
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
     # gesture dataset
     from dataloaders.dataset import VideoDataset
     subset = ['No gesture', 'Swiping Down', 'Swiping Up', 'Swiping Left', 'Swiping Right']
+    # subset = None
     test_data = VideoDataset(dataset='20bn-jester', split='val', clip_len=16, subset=subset)
     test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=False, drop_last=False)
     ######################### learner #######################
@@ -148,9 +151,9 @@ if __name__ == "__main__":
     ######################### eval #######################
     # u_grid = [0.8, 0.85, 0.9, 0.95]
     # u_grid = [0.25, 0.5, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99]
-    u_grid = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-    train_epochs = 50
-    seed = 1
+    # u_grid = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    u_grid = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+
     eval_after_epoch = True
     for i, u in enumerate(u_grid):
         print("==== Eval for u = %s ====", u)

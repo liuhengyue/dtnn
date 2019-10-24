@@ -77,9 +77,17 @@ if __name__ == "__main__":
     root_logger.addHandler(handler)
 
     net = C3dDataNetwork((3, 16, 100, 160), num_classes=27)
+    # init will all weights to zero
+    # def weights_init(m):
+    #     classname = m.__class__.__name__
+    #     # print(classname)
+    #     if classname in ['Conv3d', 'FullyConnected']:
+    #         nn.init.zeros_(m.weight.data)
+    #         nn.init.zeros_(m.bias.data)
+    # net.apply(weights_init)
     gate_network = net.gate
     ################### pre-trained
-    pretrained = False
+    pretrained = True
     if pretrained:
         # start = 12
         # filename = model_file("ckpt/gated_raw_c3d/", start, ".latest")
@@ -94,7 +102,7 @@ if __name__ == "__main__":
     ### GPU support ###
     cuda = torch.cuda.is_available()
     # cuda = False
-    device_ids = [0, 1, 2, 3]
+    device_ids = [1, 2, 3]
     # device_ids = [1]
     if cuda:
         net = net.cuda(device_ids[0])
@@ -129,7 +137,7 @@ if __name__ == "__main__":
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
     # learning_rate = 4e-5
-    learning_rate = 4e-4
+    learning_rate = 4e-6
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -156,12 +164,13 @@ if __name__ == "__main__":
     n_utilization_stages = 10
     seed = 1
     eval_after_epoch = False
-    u_stage_l = 0.0
-    for epoch in range(start, start + train_epochs):
+    u_stage_l = 0.0 if start == 0 else (start - 1 + 6.) / (train_epochs + 6.)
+    for epoch in range(start, train_epochs):
         # u_stage starts from 0.1 up to 1.0
         # u_stage_r = (epoch + 11.) / (train_epochs + 11.)
         u_stage_r = (epoch + 6.) / (train_epochs + 6.)
         print("==== Train: Epoch %s: u_stage=[%s, %s]", epoch, u_stage_l, u_stage_r)
+        log.info("==== Train: Epoch %s: u_stage=[%s, %s]", epoch, u_stage_l, u_stage_r)
         batch_idx = 0
         nbatches = math.ceil(len(train_data) / batch_size)
         learner.start_train(epoch, seed)

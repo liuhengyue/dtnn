@@ -201,6 +201,10 @@ class GatedDataPathLearner(GatedNetworkLearner):
           for i in range(c_l, c_r):
             for p in gated_module[0].components[i].parameters():
               p.requires_grad = True
+              # re-init these weights
+              # if (torch.sum(p) == 0).item():
+              #   nn.init.uniform_(p)
+
       # check the requires grad term
       # for gated_module in gated_modules:
       #     print(gated_module)

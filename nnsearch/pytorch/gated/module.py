@@ -317,10 +317,12 @@ class GatedChainNetwork(nn.Module):
         self.gate.next_module( m )
         g, info = expand( self.gate( x ) )
         gs.append( (g, info) )
+        # print(g)
         if self.normalize:
           g = self._normalize( g )
         self._log_gbar( g )
         # debug: check the gate matrix
+        # print(g)
         # print("Layer --------------------\n", m, "\n gate matrix --------------------\n",  g)
         x = m( x, g )
       else:

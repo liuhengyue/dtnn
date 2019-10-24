@@ -117,7 +117,7 @@ def load_model(self, state_dict, load_gate=True, strict=True):
         if len(missing) > 0:
             raise KeyError('missing keys in state_dict: "{}"'.format(missing))
 
-def make_sequentialGate(dict_stages, gate_during_eval=False):
+def make_sequentialGate(dict_stages, gate_during_eval=True):
     gate_modules = []
     for key, block_stages in dict_stages.items():
         if key == "refinement":

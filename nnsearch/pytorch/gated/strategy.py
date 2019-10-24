@@ -68,7 +68,7 @@ class PlusOneCount(nn.Module):
     return g
 
 class CountGate(nn.Module, metaclass=abc.ABCMeta):
-  def __init__( self, ncomponents, count, gate_during_eval=False ):
+  def __init__( self, ncomponents, count, gate_during_eval=True ):
     """
     Let C_n be the set of active components, where n = |C_n|. For the
     `NestedGate` strategy, C_{n-1} \subset C_n.

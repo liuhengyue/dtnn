@@ -79,7 +79,7 @@ if __name__ == "__main__":
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
 
-    net = C3dDataNetwork((3, 16, 100, 160), num_classes=5)
+    net = C3dDataNetwork((3, 16, 100, 160), num_classes=27)
     gate_network = net.gate
     ################### must load the model to eval
     # start = 11
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     ### GPU support ###
     cuda = torch.cuda.is_available()
     # cuda = False
-    device_ids = [1, 2, 3] if cuda else None
+    device_ids = [0, 1, 2, 3] if cuda else None
     # device_ids = [1]
     if cuda:
         net = net.cuda(device_ids[0])
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     # gesture dataset
     from dataloaders.dataset import VideoDataset
     subset = ['No gesture', 'Swiping Down', 'Swiping Up', 'Swiping Left', 'Swiping Right']
-    # subset = None
+    subset = None
     test_data = VideoDataset(dataset='20bn-jester', split='val', clip_len=16, subset=subset)
     test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=False, drop_last=False)
     ######################### learner #######################

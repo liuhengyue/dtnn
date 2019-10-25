@@ -216,7 +216,7 @@ class GatedC3D(GatedChainNetwork):
         print("TOTAL FLOPS", total_macc)
         return (total_macc, gated_macc)
 
-def C3dDataNetwork(in_shape=(3, 16, 368, 368), num_classes=5):
+def C3dDataNetwork(in_shape=(3, 16, 100, 160), num_classes=5):
     span_factor = 1
 
     c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64 * span_factor, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),

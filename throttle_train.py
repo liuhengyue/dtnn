@@ -62,11 +62,11 @@ class GatedNetworkApp:
         self.checkpoint_mgr = CheckpointManager(output=".", input=".")
 
     def make_optimizer(self, parameters):
-        return optim.SGD(parameters, lr=0.000001, momentum=0.9)
+        return optim.SGD(parameters, lr=0.00001, momentum=0.9)
         # return optim.Adam( parameters, lr=.01 )
 
     def gated_network(self):
-        return C3dDataNetwork()
+        return C3dDataNetwork(num_classes=27)
 
 ##################################################################################################
 # RL Learners
@@ -155,6 +155,7 @@ class PGLearner():
             u_bins[i] = 0
         u_history = 0.0
         exploration_rate = math.e ** (-0.5 * (episode + 1))
+        print("Exploration rate: %s", exploration_rate)
         log.info("Exploration rate: %s", exploration_rate)
         # cuda = torch.cuda.is_available()
         # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -180,7 +181,7 @@ class PGLearner():
                 # print(torch.max(output, 1)[0])
 
             # a ranges from 0 to 9
-                print("#1 STATE -----------\n", state.detach().cpu().numpy())
+            #     print("#1 STATE -----------\n", state.detach().cpu().numpy())
 
             u = torch.take(self._us, state)
 
@@ -205,8 +206,8 @@ class PGLearner():
                 r = self.reward.reward(labels, yhat, gs)
 
 
-            if randnum > exploration_rate:
-                print("#2 REWARD -----------\n", r.detach().cpu().numpy())
+            # if randnum > exploration_rate:
+            #     print("#2 REWARD -----------\n", r.detach().cpu().numpy())
             # print("#3 PGNET OOUTPUT -----------\n", output.detach().cpu().numpy())
             # take STATE as ground-truth
             # print(output)
@@ -248,7 +249,8 @@ class PGLearner():
             # print("LOSS", loss)
             loss.backward()
             self.optimizer.step()
-            self._finish_batch()
+            self.pgnet.zero_grad()
+        self._finish_batch()
 
         # end of epoch
         running_num = len(self.train_dataset) * self.train_dataset.batch_size
@@ -288,11 +290,8 @@ class UsageAccuracyRewardModel:
         with torch.no_grad():
             # gs is a list of gate matrix, each matrix is of (B, ncomponents)
             # print("yhat: ", yhat)
+            # (B, 27)
             confidence_levels = torch.nn.Softmax(dim=1)(yhat)
-
-            # state_confidence_levels = torch.nn.Softmax(dim=1)(state_class)
-            #
-            # state_pred = torch.argmax(state_confidence_levels, dim=1)
 
             # print("CONFIDENCE LEVELS:", confidence_levels * 100)
             # print("gs *********", [g[0].detach() for g in gs])
@@ -310,10 +309,12 @@ class UsageAccuracyRewardModel:
             ratio_flops = flops_used / self.total_F
             # print("RATIO FLOPS", ratio_flops)
             pred_max, pred = torch.max(confidence_levels, dim=1)
+
+            batch_pred_bool = pred == y
             # print("before if: ", pred, y, pred.requires_grad)
             # print(y.view(-1, 1))
             # (B, 1) -> (B,) should be a better way
-            gt_confidence_levels = torch.gather(confidence_levels, 1, y.view(-1, 1)).view(-1)
+            # gt_confidence_levels = torch.gather(confidence_levels, 1, y.view(-1, 1)).view(-1)
             # positive_r = torch.max(gt_confidence_levels - ratio_flops,
             #                        torch.zeros(gt_confidence_levels.size(), device=gt_confidence_levels.device))
             # positive_r = torch.exp(gt_confidence_levels - ratio_flops)
@@ -324,26 +325,29 @@ class UsageAccuracyRewardModel:
             # put class weights on flops
             # print(yhat)
             # print(confidence_levels)
-            pred_diff = self.ce(confidence_levels, y)
+            # pred_diff = self.ce(yhat, y)
+            batch_acc = torch.mean(batch_pred_bool.float()).detach().cpu().numpy()
+
+            # print("#2 PREDICTION ACCURACY -----------\n", batch_acc)
             # print(pred_diff * ratio_flops)
             # print(ratio_flops)
-            positive_r = torch.exp((2.0 -  pred_diff) * (1.0 - ratio_flops))
+            positive_r = torch.exp((2.0 -  pred_max) * (1.0 - ratio_flops))
             # positive_r = torch.exp(ratio_flops * pred_diff) - 1.5
             # negative_r less -> ratio_flops more -> pred_diff less
-            negative_r = -1 / torch.exp( - ratio_flops * pred_diff)
+            negative_r = -1 / torch.exp( - ratio_flops * pred_max)
 
-            magnitude = torch.abs(torch.min(negative_r))
+            # magnitude = torch.abs(torch.min(negative_r))
 
-            negative_r = negative_r / magnitude
+            # negative_r = negative_r / magnitude
             # negative_r = pred_diff - 2 * ratio_flops
             # batch normalize reward separately
-            positive_r = (positive_r - torch.mean(positive_r)) #/ (torch.std(positive_r) + 1e-16)
+            # positive_r = (positive_r - torch.mean(positive_r)) #/ (torch.std(positive_r) + 1e-16)
 
-            positive_r = positive_r / torch.max(positive_r)
+            # positive_r = positive_r / torch.max(positive_r)
 
             # negative_r = (negative_r - torch.mean(negative_r)) / (torch.std(negative_r) + 1e-16)
 
-            r = torch.where((pred == y), positive_r, negative_r)
+            r = torch.where(batch_pred_bool, positive_r, negative_r)
             # r = (r - torch.mean(r)) / (torch.std(r) + 1e-16)
 
             return r
@@ -427,6 +431,7 @@ class App(GatedNetworkApp):
         from dataloaders.dataset import VideoDataset
         from torch.utils.data import DataLoader
         subset = ['No gesture', 'Swiping Down', 'Swiping Left', 'Swiping Right', 'Swiping Up']
+        subset = None
         train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, subset=subset)
         batch_size = self.batch_size_per_gpu * len(self.device_ids)
         self.train_dataset = DataLoader(train_data, batch_size=batch_size,
@@ -467,7 +472,7 @@ class App(GatedNetworkApp):
 
         # self.init_network_parameters(features, from_file="/home/samyakp/Desktop/rl-solar-models/cifar10_resnet				# self.init_network_parameters(features, from_file="/home/samyakp/Desktop/rl-solar-models/cifar10_resnet8_model_150.pkl" )8_model_150.pkl" )
         #self.init_network_parameters(features, from_file="/home/samyak/Desktop/throttledemo/cpm_r3_model_epoch2000.pth")
-        flops = util.flops(pgnet, (3, 16, 368, 368)).macc
+        flops = util.flops(pgnet, (3, 16, 100, 160)).macc
         print("Controller network flops - {}".format(flops))
         if len(self.device_ids) > 1:
             pgnet = torch.nn.DataParallel(pgnet, device_ids=self.device_ids)
@@ -504,7 +509,7 @@ class App(GatedNetworkApp):
         #             "data_network", self.args.load_checkpoint )
         #           self.start_epoch = self.checkpoint_mgr.epoch_of_model_file( from_file )
         self.init_gated_network_parameters(self.data_network, from_file)
-        total, gated = self.data_network.flops((3, 16, 368, 368))
+        total, gated = self.data_network.flops((3, 16, 100, 160))
         self.data_network.to(self.device_ids[0])
         if len(self.device_ids) > 1:
             self.data_network = torch.nn.DataParallel(self.data_network, device_ids=self.device_ids)
@@ -582,6 +587,9 @@ class App(GatedNetworkApp):
                 hp.set_batch(batch_idx)
                 print(hp)
         if self.mode == "train":
+            # check if data network is frozen
+            # for p in self.data_network.parameters():
+            #     print(p.requires_grad)
             print("==================== Start ====================")
             start = self.start_epoch
             print("start: epoch: %s", start)
@@ -630,5 +638,5 @@ if __name__ == "__main__":
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=0, device_ids=[0,1,2,3], batch_size_per_gpu=4, mode=mode)
+    app = App(start_epoch=0, device_ids=[1,2,3], batch_size_per_gpu=4, mode=mode)
     app.main()

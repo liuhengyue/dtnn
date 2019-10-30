@@ -118,7 +118,7 @@ if __name__ == "__main__":
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 24 * len(device_ids)
+    batch_size = 20 * len(device_ids)
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
     # learning_rate = 4e-5
-    learning_rate = 5e-7
+    learning_rate = 5e-5
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -150,8 +150,8 @@ if __name__ == "__main__":
 
     # gate_control = uniform_gate(0.9)
     # gate_control = uniform_gate(0.0)
-    gate_control = uniform_gate(0.0)
-    # gate_control = constant_gate(0.0)
+    gate_control = uniform_gate(0.5)
+    # gate_control = constant_gate(1.0)
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)
     criterion = None
@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
     ######################### train #######################
     # start = 0
-    train_epochs = 50
+    train_epochs = 10
     n_utilization_stages = 10
     seed = 1
     eval_after_epoch = False

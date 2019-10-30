@@ -128,6 +128,7 @@ if __name__ == "__main__":
     input_shape = (3, 16, 100, 160)
     input = torch.randn(input_shape)
     net = ContextualBanditNet().cuda()
+    net.eval()
     # print(net)
     from torchsummary import summary
     summary(net, input_shape, device="cuda")

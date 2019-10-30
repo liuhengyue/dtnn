@@ -62,7 +62,7 @@ class GatedNetworkApp:
         self.checkpoint_mgr = CheckpointManager(output=".", input=".")
 
     def make_optimizer(self, parameters):
-        return optim.SGD(parameters, lr=0.00001, momentum=0.9)
+        return optim.SGD(parameters, lr=1e-2, momentum=0.9)
         # return optim.Adam( parameters, lr=.01 )
 
     def gated_network(self):
@@ -154,7 +154,7 @@ class PGLearner():
         for i in range(0, self.ngate_levels):
             u_bins[i] = 0
         u_history = 0.0
-        exploration_rate = math.e ** (-0.5 * (episode + 1))
+        exploration_rate = math.e ** (-0.1 * (episode + 1))
         print("Exploration rate: %s", exploration_rate)
         log.info("Exploration rate: %s", exploration_rate)
         # cuda = torch.cuda.is_available()
@@ -218,10 +218,12 @@ class PGLearner():
             picked_state_probs = torch.gather(state_probs, 1, state.view(-1, 1)).view(-1)
             # ce_loss = self.ce(logits, u_gts)
             # print(ce_loss)
-            # print("#4 CONTRIBUTING LOGITS -----------\n", logits.detach().cpu().numpy())
+            # print("# State softmax -----------\n", state_probs.detach().cpu().numpy())
+            # print("# Picked state softmax -----------\n", picked_state_probs.detach().cpu().numpy())
+            # print("# Reward -----------\n", r.detach().cpu().numpy())
             # print("logits: ", logits)
             loss = self.loss(picked_state_probs, r)
-
+            # print("# Loss -----------\n", loss.detach().cpu().numpy())
             probs = torch.nn.Softmax(dim=1)(yhat)
             preds = torch.max(probs, 1)[1]
             batch_corrects = torch.sum(preds == labels.data).item()
@@ -325,13 +327,12 @@ class UsageAccuracyRewardModel:
             # put class weights on flops
             # print(yhat)
             # print(confidence_levels)
-            # pred_diff = self.ce(yhat, y)
-            batch_acc = torch.mean(batch_pred_bool.float()).detach().cpu().numpy()
+            # batch_acc = torch.mean(batch_pred_bool.float()).detach().cpu().numpy()
 
             # print("#2 PREDICTION ACCURACY -----------\n", batch_acc)
             # print(pred_diff * ratio_flops)
             # print(ratio_flops)
-            positive_r = torch.exp((2.0 -  pred_max) * (1.0 - ratio_flops))
+            positive_r = ((1.5 - ratio_flops) * (0.1 + pred_max)) ** 2
             # positive_r = torch.exp(ratio_flops * pred_diff) - 1.5
             # negative_r less -> ratio_flops more -> pred_diff less
             negative_r = -1 / torch.exp( - ratio_flops * pred_max)
@@ -638,5 +639,5 @@ if __name__ == "__main__":
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=0, device_ids=[1,2,3], batch_size_per_gpu=4, mode=mode)
+    app = App(start_epoch=0, device_ids=[0,1,2,3], batch_size_per_gpu=40, mode=mode)
     app.main()

@@ -112,7 +112,7 @@ class GatedC3D(GatedChainNetwork):
     """
 
     def __init__(self, gate, in_shape, nclasses, c3d_stages, fc_stages,
-                 batchnorm=False, dropout=0.5, **kwargs):
+                 batchnorm=True, dropout=0.5, **kwargs):
         # in_shape: (C, D, H, W), D is time/sequence
 
         self.fc_stages = fc_stages
@@ -148,8 +148,9 @@ class GatedC3D(GatedChainNetwork):
                     else:
                         self.tmp_modules.append(nn.Conv3d(self.in_channels, stage.nchannels,
                                                           kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding))
-                    if self.batchnorm:
+                        # for first layer, add bn and relu
                         self.tmp_modules.append(nn.BatchNorm3d(stage.nchannels))
+                        self.tmp_modules.append(nn.ReLU())
                     self.in_channels = stage.nchannels
                 elif stage.name == "pool":
                     pool, in_shape = Maxpool3dWrapper(self.in_shape, kernel_size=stage.kernel_size, stride=stage.stride)
@@ -216,7 +217,7 @@ class GatedC3D(GatedChainNetwork):
         print("TOTAL FLOPS", total_macc)
         return (total_macc, gated_macc)
 
-def C3dDataNetwork(in_shape=(3, 16, 100, 160), num_classes=5):
+def C3dDataNetwork(in_shape=(3, 16, 100, 160), num_classes=27, gate_during_eval=True):
     span_factor = 1
 
     c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64 * span_factor, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
@@ -237,7 +238,7 @@ def C3dDataNetwork(in_shape=(3, 16, 100, 160), num_classes=5):
     # fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
 
     stages = {"c3d": c3d_stages, "fc": fc_stages}
-    gate = make_sequentialGate(stages)
+    gate = make_sequentialGate(stages, gate_during_eval=gate_during_eval)
     # in_shape = (21, 16, 45, 45)
     # in_shape = (3, 16, 368, 368) # for raw input
     c3d_pars = {"c3d": c3d_stages, "fc": fc_stages, "gate": gate,
@@ -268,15 +269,15 @@ if __name__ == "__main__":
     # order: "name", "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
 
 
-    net = C3dDataNetwork(in_shape=(3,16,100,160)).cuda()
-    # net.eval()
+    net = C3dDataNetwork(in_shape=(3,16,100,160), gate_during_eval=False).cuda()
+    net.eval()
     net.flops((3, 16, 100, 160))
     # print(net)
 
-    # summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
+    summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
     x = torch.rand(1, 3, 16, 100, 160).cuda()
     u = torch.tensor(1.0).cuda()
-    y, gs = net(Variable(x), u)
+    y, gs = net(x, u)
     print("output size: {} \n gate size: {} ".format(y.size(), len(gs)))
     print("gate matrix: \n {}".format([g[0] for g in gs]))
     y.backward

@@ -17,14 +17,15 @@ from network import C3D_model, R2Plus1D_model, R3D_model
 from network import cpm_c3d_model
 
 # Use GPU if available else revert to CPU
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print("Device being used:", device)
+cuda = torch.cuda.is_available()
+devices = [1, 2, 3]
+print("Devices being used:", devices)
 
-nEpochs = 100  # Number of epochs for training
+nEpochs = 50  # Number of epochs for training
 resume_epoch = 0  # Default is 0, change if want to resume
 useTest = False # See evolution of the test set when training
 nTestInterval = 20 # Run on test set every nTestInterval epochs
-snapshot = 1 # Store a model every snapshot epochs
+snapshot = 10 # Store a model every snapshot epochs
 lr = 1e-3 # Learning rate
 pretrained = False
 
@@ -51,7 +52,7 @@ else:
     run_id = int(runs[-1].split('_')[-1]) + 1 if runs else 0
 
 save_dir = os.path.join(save_dir_root, 'run', 'run_' + str(run_id))
-modelName = 'CPM-C3D' # Options: C3D or R2Plus1D or R3D
+modelName = 'C3D' # Options: C3D or R2Plus1D or R3D
 saveName = modelName + '-' + dataset
 
 def filter_none_collate(batch):
@@ -113,16 +114,19 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
         optimizer.load_state_dict(checkpoint['opt_dict'])
 
     print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
-    model.to(device)
-    criterion.to(device)
+    model.cuda(devices[0])
+    criterion.to(devices[0])
+    # multi gpu support
+    if len(devices) > 1:
+        model = torch.nn.DataParallel(model, device_ids=devices)
 
     log_dir = os.path.join(save_dir, 'models', datetime.now().strftime('%b%d_%H-%M-%S') + '_' + socket.gethostname())
     writer = SummaryWriter(log_dir=log_dir)
 
     print('Training model on {} dataset...'.format(dataset))
-    train_dataset = VideoDataset(dataset=dataset, split='train',clip_len=16)
-    val_dataset = VideoDataset(dataset=dataset, split='val', clip_len=16)
-    test_dataset = VideoDataset(dataset=dataset, split='test', clip_len=16)
+    train_dataset = VideoDataset(dataset=dataset, split='train',clip_len=16, subset=None)
+    val_dataset = VideoDataset(dataset=dataset, split='val', clip_len=16, subset=None)
+    test_dataset = VideoDataset(dataset=dataset, split='test', clip_len=16, subset=None)
 
 
     # or just try a subset
@@ -130,10 +134,10 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
     # val_sampler = RandomSampler(val_dataset, replacement=True, num_samples=200)
     train_sampler, val_sampler = None, None
     train_shuffle = True
-
-    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=2, shuffle=train_shuffle, num_workers=1, collate_fn=filter_none_collate)
-    val_dataloader   = DataLoader(val_dataset, sampler=val_sampler, batch_size=2, num_workers=1, collate_fn=filter_none_collate)
-    test_dataloader  = DataLoader(test_dataset, batch_size=2, num_workers=1)
+    batch_size = 22 * len(devices)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=batch_size, shuffle=train_shuffle, collate_fn=filter_none_collate)
+    val_dataloader   = DataLoader(val_dataset, sampler=val_sampler, batch_size=batch_size, collate_fn=filter_none_collate)
+    test_dataloader  = DataLoader(test_dataset, batch_size=batch_size)
 
     trainval_loaders = {'train': train_dataloader, 'val': val_dataloader}
     trainval_sizes = {x: len(trainval_loaders[x].dataset) for x in ['train', 'val']}
@@ -152,7 +156,7 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
             # or being validated. Primarily affects layers such as BatchNorm or Dropout.
             if phase == 'train':
                 # scheduler.step() is to be called once every epoch during training
-                scheduler.step()
+                # scheduler.step()
                 model.train()
             else:
                 model.eval()
@@ -162,16 +166,17 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
                 if data == []:
                     continue
                 inputs, labels = data
-                # move inputs and labels to the device the training is taking place on
-                inputs = Variable(inputs, requires_grad=True).to(device)
-                labels = Variable(labels).to(device)
+                if cuda:
+                    # move inputs and labels to the device the training is taking place on
+                    inputs = inputs.cuda(devices[0])
+                    labels = labels.cuda(devices[0])
                 optimizer.zero_grad()
 
                 if phase == 'train':
-                    heatmaps, outputs = model(inputs)
+                    outputs = model(inputs)
                 else:
                     with torch.no_grad():
-                        heatmaps, outputs = model(inputs)
+                        outputs = model(inputs)
 
                 probs = nn.Softmax(dim=1)(outputs)
                 preds = torch.max(probs, 1)[1]
@@ -188,6 +193,8 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
             epoch_acc = running_corrects.double() / trainval_sizes[phase]
 
             if phase == 'train':
+                # scheduler.step() is to be called once every epoch during training
+                scheduler.step()
                 writer.add_scalar('data/train_loss_epoch', epoch_loss, epoch)
                 writer.add_scalar('data/train_acc_epoch', epoch_acc, epoch)
             else:
@@ -199,11 +206,18 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
             print("Execution time: " + str(stop_time - start_time) + "\n")
 
         if epoch % save_epoch == (save_epoch - 1):
-            torch.save({
-                'epoch': epoch + 1,
-                'state_dict': model.state_dict(),
-                'opt_dict': optimizer.state_dict(),
-            }, os.path.join(save_dir, 'models', saveName + '_epoch-' + str(epoch) + '.pth.tar'))
+            if isinstance(model, torch.nn.DataParallel):
+                torch.save({
+                    'epoch': epoch + 1,
+                    'state_dict': model.module.state_dict(),
+                    'opt_dict': optimizer.state_dict(),
+                }, os.path.join(save_dir, 'models', saveName + '_epoch-' + str(epoch) + '.pth.tar'))
+            else:
+                torch.save({
+                    'epoch': epoch + 1,
+                    'state_dict': model.state_dict(),
+                    'opt_dict': optimizer.state_dict(),
+                }, os.path.join(save_dir, 'models', saveName + '_epoch-' + str(epoch) + '.pth.tar'))
             print("Save model at {}\n".format(os.path.join(save_dir, 'models', saveName + '_epoch-' + str(epoch) + '.pth.tar')))
 
         if useTest and epoch % test_interval == (test_interval - 1):
@@ -214,8 +228,8 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
             running_corrects = 0.0
 
             for inputs, labels in tqdm(test_dataloader):
-                inputs = inputs.to(device)
-                labels = labels.to(device)
+                inputs = inputs.cuda(devices[0])
+                labels = labels.cuda(devices[0])
 
                 with torch.no_grad():
                     outputs = model(inputs)

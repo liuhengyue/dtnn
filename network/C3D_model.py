@@ -10,25 +10,33 @@ class C3D(nn.Module):
 
     def __init__(self, num_classes, pretrained=False):
         super(C3D, self).__init__()
-        self.linear_size = 2048
-        self.fc_size = 1024
-        self.conv1 = nn.Conv3d(21, 64, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.linear_size = 512 * 2 * 4 * 6
+        self.fc_size = 512
+        self.conv1 = nn.Conv3d(3, 64, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn1 = nn.BatchNorm3d(64)
         self.pool1 = nn.MaxPool3d(kernel_size=(1, 2, 2), stride=(1, 2, 2))
 
         self.conv2 = nn.Conv3d(64, 128, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn2 = nn.BatchNorm3d(128)
         self.pool2 = nn.MaxPool3d(kernel_size=(2, 2, 2), stride=(2, 2, 2))
 
         self.conv3a = nn.Conv3d(128, 256, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn3a = nn.BatchNorm3d(256)
         self.conv3b = nn.Conv3d(256, 256, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn3b = nn.BatchNorm3d(256)
         self.pool3 = nn.MaxPool3d(kernel_size=(2, 2, 2), stride=(2, 2, 2))
 
         self.conv4a = nn.Conv3d(256, 512, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn4a = nn.BatchNorm3d(512)
         self.conv4b = nn.Conv3d(512, 512, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn4b = nn.BatchNorm3d(512)
         self.pool4 = nn.MaxPool3d(kernel_size=(2, 2, 2), stride=(2, 2, 2))
 
         self.conv5a = nn.Conv3d(512, 512, kernel_size=(3, 3, 3), padding=(1, 1, 1))
+        self.bn5a = nn.BatchNorm3d(512)
         self.conv5b = nn.Conv3d(512, 512, kernel_size=(3, 3, 3), padding=(1, 1, 1))
-        self.pool5 = nn.MaxPool3d(kernel_size=(2, 2, 2), stride=(2, 2, 2), padding=(0, 1, 1))
+        self.bn5b = nn.BatchNorm3d(512)
+        self.pool5 = nn.MaxPool3d(kernel_size=(2, 2, 2), stride=(2, 2, 2), padding=(1, 1, 1))
         # number of filters = 512 * input_image_dim / down_scale (28)
         self.fc6 = nn.Linear(self.linear_size, self.fc_size)
         self.fc7 = nn.Linear(self.fc_size, self.fc_size)
@@ -44,28 +52,28 @@ class C3D(nn.Module):
 
     def forward(self, x):
 
-        x = self.relu(self.conv1(x))
+        x = self.relu(self.bn1(self.conv1(x)))
         x = self.pool1(x)
 
-        x = self.relu(self.conv2(x))
+        x = self.relu(self.bn2(self.conv2(x)))
         x = self.pool2(x)
 
-        x = self.relu(self.conv3a(x))
-        x = self.relu(self.conv3b(x))
+        x = self.relu(self.bn3a(self.conv3a(x)))
+        x = self.relu(self.bn3b(self.conv3b(x)))
         x = self.pool3(x)
 
-        x = self.relu(self.conv4a(x))
-        x = self.relu(self.conv4b(x))
+        x = self.relu(self.bn4a(self.conv4a(x)))
+        x = self.relu(self.bn4b(self.conv4b(x)))
         x = self.pool4(x)
 
-        x = self.relu(self.conv5a(x))
-        x = self.relu(self.conv5b(x))
+        x = self.relu(self.bn5a(self.conv5a(x)))
+        x = self.relu(self.bn5b(self.conv5b(x)))
         x = self.pool5(x)
         x = x.view(-1, self.linear_size)
         x = self.relu(self.fc6(x))
-        x = self.dropout(x)
+        # x = self.dropout(x)
         x = self.relu(self.fc7(x))
-        x = self.dropout(x)
+        # x = self.dropout(x)
 
         logits = self.fc8(x)
 
@@ -146,9 +154,9 @@ def get_10x_lr_params(model):
                 yield k
 
 if __name__ == "__main__":
-    inputs = torch.rand(1, 3, 16, 112, 112)
-    net = C3D(num_classes=27, pretrained=False)
-    summary(net, (21, 16, 45, 45))
+    inputs = torch.rand(1, 3, 16, 100, 160).cuda()
+    net = C3D(num_classes=27, pretrained=False).cuda()
+    summary(net, (3, 16, 100, 160))
     # summary(net, (21, 16, 45, 45))
     # outputs = net.forward(inputs)
     # print(outputs.size())

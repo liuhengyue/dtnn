@@ -177,6 +177,7 @@ def output_shape( layer, input_shape ):
   raise NotImplementedError( layer )
 
 @output_shape.register(nn.BatchNorm2d)
+@output_shape.register(nn.BatchNorm3d)
 @output_shape.register(nn.ReLU)
 def _( layer, input_shape ):
   return input_shape

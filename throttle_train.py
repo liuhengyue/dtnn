@@ -62,7 +62,7 @@ class GatedNetworkApp:
         self.checkpoint_mgr = CheckpointManager(output=".", input=".")
 
     def make_optimizer(self, parameters):
-        return optim.SGD(parameters, lr=1e-2, momentum=0.9)
+        return optim.SGD(parameters, lr=1e-5, momentum=0.9)
         # return optim.Adam( parameters, lr=.01 )
 
     def gated_network(self):
@@ -146,7 +146,7 @@ class PGLearner():
             print("learning_rate: %s", param_group["lr"])
 
         # with training_mode( True, self ):
-        self.optimizer.zero_grad()
+
         running_corrects = 0.0
         running_loss = 0.0
         running_reward = 0.0
@@ -160,6 +160,7 @@ class PGLearner():
         # cuda = torch.cuda.is_available()
         # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         for i, data in enumerate(tqdm(self.train_dataset)):
+            self.optimizer.zero_grad()
             inputs, labels = data
             inputs = inputs.to(self.device_ids[0])
             labels = labels.to(self.device_ids[0])
@@ -167,7 +168,7 @@ class PGLearner():
             # u_gts = torch.where(labels == 0, torch.zeros(labels.size(), device=labels.device), 9 * torch.ones(labels.size(), device=labels.device)).long()
             # size (B, 5 * 10)
             output = self.pgnet(inputs)
-            # print("**** output ****\n", output.size())
+            # print("# **** output ****\n", output.detach().cpu().numpy())
 
             # exploration_rate = 0.0
             randnum = np.random.uniform()
@@ -181,7 +182,7 @@ class PGLearner():
                 # print(torch.max(output, 1)[0])
 
             # a ranges from 0 to 9
-            #     print("#1 STATE -----------\n", state.detach().cpu().numpy())
+                print("#1 STATE -----------\n", state.detach().cpu().numpy())
 
             u = torch.take(self._us, state)
 
@@ -189,7 +190,7 @@ class PGLearner():
                 u_bins[k] += 1
 
             u_history += torch.sum(u).item()
-            # print("------ u ------", u)
+            # print("# ------ u ------", u)
             if u is None:  # Network turned off
                 # print("problem.step.yhat: None")
                 yhat = None
@@ -502,7 +503,7 @@ class App(GatedNetworkApp):
         #             and self.args.load_data_network is not None):
         #           self.parser.error( "--load-checkpoint and --load-feature-network are"
         #                              " mutually exclusive" )
-        # from_file = "/home/samyak/Desktop/rl-solar-models/cifar10_densenet_nested_model_310.pkl"#self.args.load_data_network
+        # from_file = "/home/henry/Research/throttling-demo/ckpt/gated_raw_c3d/model_95.pkl.good"
         from_file = self.checkpoint_mgr.latest_checkpoints("ckpt/gated_raw_c3d/", "model")[0]
 
         #         if self.args.load_checkpoint is not None:
@@ -639,5 +640,5 @@ if __name__ == "__main__":
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=0, device_ids=[0,1,2,3], batch_size_per_gpu=40, mode=mode)
+    app = App(start_epoch=0, device_ids=[0], batch_size_per_gpu=20, mode=mode)
     app.main()

@@ -185,6 +185,53 @@ class GatedC3D(GatedChainNetwork):
     def __set_classification_layer(self):
         self.tmp_modules.append(FullyConnected(self.in_channels, self.nclasses))
 
+    # rewrite the forward function
+    def forward(self, x, u=None):
+        """
+        Returns:
+          `(y, gs)` where:
+            `y`  : Network output
+            `gs` : `[(g, info)]` List of things returned from `self.gate` in same
+              order as `self.gated_modules`. `g` is the actual gate matrix, and
+              `info` is any additional things returned (or `None`).
+        """
+
+        def expand(gout):
+            if isinstance(gout, tuple):
+                g, info = gout  # Fail fast on unexpected extra outputs
+                return (g, info)
+            else:
+                return (gout, None)
+
+        gs = []
+
+        self.gate.set_control(u)
+        # TODO: With the current architecture, set_control() has to happen before
+        # reset() in case reset() needs to run the gate network. Should `u` be a
+        # second parameter to reset()? Should it be an argument to gate() as well?
+        # How do we support gate networks that require the outputs of arbitrary
+        # layers in the data network in a modular way?
+        self.gate.reset(x)
+        for m in self.fn:
+            # print(type(m))
+            if isinstance(m, GatedModule):
+                self.gate.next_module(m)
+                g, info = expand(self.gate(x))
+                gs.append((g, info))
+                # print(g)
+                if self.normalize:
+                    g = self._normalize(g)
+                self._log_gbar(g)
+                # debug: check the gate matrix
+                # print(g)
+                # print("Layer --------------------\n", m, "\n gate matrix --------------------\n",  g)
+                x = m(x, g)
+            else:
+                x = m(x)
+            # print(x.size())
+        log.debug("network.x: %s", x)
+        return x, gs
+
     def flops(self, in_shape):
         total_macc = 0
         gated_macc = []
@@ -269,14 +316,14 @@ if __name__ == "__main__":
     # order: "name", "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
 
 
-    net = C3dDataNetwork(in_shape=(3,16,100,160), gate_during_eval=False).cuda()
+    net = C3dDataNetwork(in_shape=(3,16,100,160), gate_during_eval=True).cuda()
     net.eval()
     net.flops((3, 16, 100, 160))
     # print(net)
 
-    summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
+    # summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
     x = torch.rand(1, 3, 16, 100, 160).cuda()
-    u = torch.tensor(1.0).cuda()
+    u = torch.tensor(0.5).cuda()
     y, gs = net(x, u)
     print("output size: {} \n gate size: {} ".format(y.size(), len(gs)))
     print("gate matrix: \n {}".format([g[0] for g in gs]))

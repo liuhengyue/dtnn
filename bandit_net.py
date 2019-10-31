@@ -19,22 +19,29 @@ class ContextualBanditNet(nn.Module):
         # if 10 levels: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
         self._us = torch.tensor([i * inc for i in range(1, self.ngate_levels + 1)], requires_grad=False)
 
-        self.fc_size = 360
+        self.fc_size = 360 * 2
 
         self.pgconv = nn.Sequential(
-            nn.Conv3d(3, 32, (3,7,7), 1, 1),
+            nn.Conv3d(3, 64, (3,7,7), 1, 1),
+            nn.BatchNorm3d(64),
             nn.ReLU(),
-            nn.Conv3d(32, 32, (3,7,7), 2, 1),
+            nn.Conv3d(64, 64, (3,7,7), 2, 1),
+            nn.BatchNorm3d(64),
             nn.ReLU(),
-            nn.Conv3d(32, 32, (3, 7, 7), 1, 0),
+            nn.Conv3d(64, 64, (3, 7, 7), 1, 0),
+            nn.BatchNorm3d(64),
             nn.ReLU(),
-            nn.Conv3d(32, 32, (3,3,3), 2, 1),
+            nn.Conv3d(64, 64, (3,3,3), 2, 1),
+            nn.BatchNorm3d(64),
+            nn.ReLU(),
+            nn.Conv3d(64, 32, (3, 3, 3), (1, 2, 2), 1),
+            nn.BatchNorm3d(32),
+            nn.ReLU(),
+            nn.Conv3d(32, 32, (3, 3, 3), (1, 2, 2), 1),
+            nn.BatchNorm3d(32),
             nn.ReLU(),
             nn.Conv3d(32, 16, (3, 3, 3), (1, 2, 2), 1),
-            nn.ReLU(),
-            nn.Conv3d(16, 16, (3, 3, 3), (1, 2, 2), 1),
-            nn.ReLU(),
-            nn.Conv3d(16, 8, (3, 3, 3), (1, 2, 2), 1),
+            nn.BatchNorm3d(16),
             nn.ReLU(),
             )
 
@@ -60,9 +67,9 @@ class ContextualBanditNet(nn.Module):
             nn.Linear(self.fc_size, 256),
             nn.ReLU(),
             nn.Linear(256, 10),
-            nn.ReLU()
+            # nn.ReLU(),
         )
-        # self.sm = nn.Sigmoid()
+        self.sm = nn.Sigmoid()
 
     def forward(self, x):
 

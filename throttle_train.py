@@ -154,7 +154,8 @@ class PGLearner():
         for i in range(0, self.ngate_levels):
             u_bins[i] = 0
         u_history = 0.0
-        exploration_rate = math.e ** (-0.1 * (episode + 1))
+        # exploration_rate = math.e ** (-0.1 * (episode + 1))
+        exploration_rate = 0
         print("Exploration rate: %s", exploration_rate)
         log.info("Exploration rate: %s", exploration_rate)
         # cuda = torch.cuda.is_available()
@@ -182,10 +183,10 @@ class PGLearner():
                 # print(torch.max(output, 1)[0])
 
             # a ranges from 0 to 9
-                print("#1 STATE -----------\n", state.detach().cpu().numpy())
+            print("#1 STATE -----------\n", state.detach().cpu().numpy())
 
             u = torch.take(self._us, state)
-
+            # print("u ------\n", u.detach().cpu().numpy())
             for k in state.cpu().numpy():
                 u_bins[k] += 1
 
@@ -306,11 +307,10 @@ class UsageAccuracyRewardModel:
             # flops used for each input of a batch (B, )
             flops_used = torch.sum(G * self.F, 1)
 
-            # print(flops_used, self.total_F)
-            # print("LIST FLOPS: ", len(list_flops))
-            # print("FINAL DECISIONS: ", final_decisions)
+
             ratio_flops = flops_used / self.total_F
-            # print("RATIO FLOPS", ratio_flops)
+            # print("RATIO FLOPS ------\n", ratio_flops.detach().cpu().numpy())
+
             pred_max, pred = torch.max(confidence_levels, dim=1)
 
             batch_pred_bool = pred == y
@@ -333,23 +333,19 @@ class UsageAccuracyRewardModel:
             # print("#2 PREDICTION ACCURACY -----------\n", batch_acc)
             # print(pred_diff * ratio_flops)
             # print(ratio_flops)
-            positive_r = ((1.5 - ratio_flops) * (0.1 + pred_max)) ** 2
-            # positive_r = torch.exp(ratio_flops * pred_diff) - 1.5
+
+            # positive_r = ((1.5 - ratio_flops) * (0.1 + pred_max)) ** 2
+            positive_r = pred_max - ratio_flops + 0.5
+            # positive_r = 1 - ratio_flops
             # negative_r less -> ratio_flops more -> pred_diff less
-            negative_r = -1 / torch.exp( - ratio_flops * pred_max)
-
-            # magnitude = torch.abs(torch.min(negative_r))
-
-            # negative_r = negative_r / magnitude
-            # negative_r = pred_diff - 2 * ratio_flops
-            # batch normalize reward separately
-            # positive_r = (positive_r - torch.mean(positive_r)) #/ (torch.std(positive_r) + 1e-16)
-
-            # positive_r = positive_r / torch.max(positive_r)
-
-            # negative_r = (negative_r - torch.mean(negative_r)) / (torch.std(negative_r) + 1e-16)
+            # negative_r = -1 / torch.exp( - ratio_flops * pred_max)
+            negative_r = - (pred_max + 0.5) * (ratio_flops + 1.5)
 
             r = torch.where(batch_pred_bool, positive_r, negative_r)
+            # l2 normalize
+            r_norm = torch.norm(r)
+            r = r / r_norm
+
             # r = (r - torch.mean(r)) / (torch.std(r) + 1e-16)
 
             return r

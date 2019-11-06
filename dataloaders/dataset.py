@@ -123,10 +123,10 @@ class VideoDataset(Dataset):
             #     buffer = self.randomflip(buffer)
             # buffer = self.normalize(buffer)
             buffer = self.to_tensor(buffer)
-            return torch.from_numpy(buffer), torch.from_numpy(labels)
+            return torch.from_numpy(buffer), torch.from_numpy(labels), index
         except:
             print("error when loading [{}]{}.".format(index, self.fnames[index]))
-            return None, None
+            return None, None, index
 
     def check_integrity(self):
         if not os.path.exists(self.root_dir):

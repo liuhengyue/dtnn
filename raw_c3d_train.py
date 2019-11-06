@@ -33,7 +33,7 @@ def evaluate(elapsed_epochs, learner, testloader, cuda_devices=None):
     with torch.no_grad():
         learner.start_eval(elapsed_epochs, seed)
         for (batch_idx, data) in enumerate(tqdm(testloader)):
-            images, labels = data
+            images, labels, _ = data
             if cuda_devices:
                 images = images.cuda(cuda_devices[0])
                 labels = labels.cuda(cuda_devices[0])

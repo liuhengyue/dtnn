@@ -162,7 +162,7 @@ class PGLearner():
         # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         for i, data in enumerate(tqdm(self.train_dataset)):
             self.optimizer.zero_grad()
-            inputs, labels = data
+            inputs, labels, _ = data
             inputs = inputs.to(self.device_ids[0])
             labels = labels.to(self.device_ids[0])
             # generate psudo gt for RL, no gesture 0 [u = 0.1], others 9 [u = 1.0]

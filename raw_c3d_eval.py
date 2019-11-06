@@ -18,9 +18,9 @@ from tqdm import tqdm
 from network.demo_model import GestureNet
 from datetime import datetime
 from network.gated_c3d import C3dDataNetwork
+import json
 
-
-def evaluate(u, learner, testloader, cuda_devices=None):
+def evaluate(u, results, learner, testloader, cuda_devices=None):
     seed = 1
     # Hyperparameters interpret their 'epoch' argument as index of the current
     # epoch; we want the same hyperparameters as in the most recent training
@@ -33,7 +33,7 @@ def evaluate(u, learner, testloader, cuda_devices=None):
     with torch.no_grad():
         learner.start_eval(u, seed)
         for (batch_idx, data) in enumerate(tqdm(testloader)):
-            images, labels = data
+            images, labels, indexes = data
             if cuda_devices:
                 images = images.cuda(cuda_devices[0])
                 labels = labels.cuda(cuda_devices[0])
@@ -47,12 +47,21 @@ def evaluate(u, learner, testloader, cuda_devices=None):
             log.debug("eval.labels: %s", labels)
             log.debug("eval.predicted: %s", predicted)
             c = (predicted == labels).cpu().numpy()
+            # add to results
+            predicted_list = predicted.tolist()
+            labels_list = labels.cpu().tolist()
+            for i, idx in enumerate(indexes.tolist()):
+                if u == 0.1:
+                    results[idx]['label'] = labels_list[i]
+                results[idx]['prediction'][u] = predicted_list[i]
             log.debug("eval.correct: %s", c)
             # print("eval correct {}/{}".format(np.sum(c), batch_size))
             for i in range(len(c)):
                 label = labels[i]
                 class_correct[label] += c[i]
                 class_total[label] += 1
+
+            break
 
         learner.finish_eval(u)
     log.info("test u=%s, total %s [%s/%s]", u, sum(class_correct) / sum(class_total), sum(class_correct), sum(class_total))
@@ -75,6 +84,7 @@ if __name__ == "__main__":
     experiment_name = 'eval_raw_c3d'
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     log_path = os.path.join("logs", experiment_name + '_' + timestamp + '.log')
+    results_path = os.path.join("logs", experiment_name + '_' + timestamp + '.json')
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
@@ -97,7 +107,7 @@ if __name__ == "__main__":
     ### GPU support ###
     cuda = torch.cuda.is_available()
     # cuda = False
-    device_ids = [0, 1, 2, 3] if cuda else None
+    device_ids = [0] if cuda else None
     # device_ids = [1]
     if cuda:
         net = net.cuda(device_ids[0])
@@ -154,14 +164,28 @@ if __name__ == "__main__":
     # u_grid = [0.25, 0.5, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99]
     u_grid = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     # u_grid = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
-
+    # larger data structure for storing all the predictions and labels
+    # {
+    #   0 : {'label' : 1 , 'prediction' : { 0.1 : 0, 0.2 : 1, ...} },
+    #   1 : {...},
+    #   ...
+    # }
+    from collections import defaultdict
+    results = defaultdict(dict)
+    n_examples = len(test_data)
+    for i in range(n_examples):
+        results[i]['label'] = 0
+        results[i]['prediction'] = {u : 0 for u in u_grid}
+    # print(results)
     eval_after_epoch = True
     for i, u in enumerate(u_grid):
         print("==== Eval for u = %s ====", u)
         log.info("==== Eval for u = %s ====", u)
         learner.update_gate_control(constant_gate(u))
-        evaluate(u, learner, test_dataset, cuda_devices=device_ids)
+        evaluate(u, results, learner, test_dataset, cuda_devices=device_ids)
 
+    with open(results_path, 'w') as f:
+        json.dump(results, f)
         # checkpoint(epoch + 1, learner)
         # Save final model if we haven't done so already
     # if args.train_epochs % args.checkpoint_interval != 0:

@@ -182,6 +182,7 @@ class GatedDataPathLearner(GatedNetworkLearner):
     self.gate_control = gate_control
     # give the u_stage, freeze the first c components
     if u_stage:
+      print("Freeze components")
       u_stage_l, u_stage_r = u_stage
       gated_modules = self.network.module._gated_modules \
         if isinstance(self.network, torch.nn.DataParallel) else self.network._gated_modules

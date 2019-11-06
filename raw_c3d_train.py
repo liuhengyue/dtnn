@@ -21,7 +21,6 @@ import re
 from network.gated_c3d import C3dDataNetwork
 
 
-
 def evaluate(elapsed_epochs, learner, testloader, cuda_devices=None):
     seed = 1
     # Hyperparameters interpret their 'epoch' argument as index of the current
@@ -137,7 +136,7 @@ if __name__ == "__main__":
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
     # learning_rate = 4e-5
-    learning_rate = 5e-5
+    learning_rate = 5e-6
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -149,8 +148,8 @@ if __name__ == "__main__":
 
 
     # gate_control = uniform_gate(0.9)
-    # gate_control = uniform_gate(0.0)
-    gate_control = uniform_gate(0.5)
+    gate_control = uniform_gate(0.0)
+    # gate_control = uniform_gate(0.5)
     # gate_control = constant_gate(1.0)
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)
@@ -160,15 +159,18 @@ if __name__ == "__main__":
 
     ######################### train #######################
     # start = 0
-    train_epochs = 10
+    train_epochs = 20
     n_utilization_stages = 10
     seed = 1
     eval_after_epoch = False
-    u_stage_l = 0.0 if start == 0 else (start % train_epochs - 1 + 6.) / (train_epochs + 6.)
+    u_stage_l = 0.0
+    u_stage_r = 0.1
+    increment = 0.1
+    # u_stage_l = 0.0 if start == 0 else (start % train_epochs - 1 + 6.) / (train_epochs + 6.)
     for epoch in range(start, start + train_epochs):
         # u_stage starts from 0.1 up to 1.0
         # u_stage_r = (epoch + 11.) / (train_epochs + 11.)
-        u_stage_r = (epoch % train_epochs + 6.) / (train_epochs + 6.)
+        # u_stage_r = ((epoch - start) + 1.) / (train_epochs + 0)
         print("==== Train: Epoch %s: u_stage=[%s, %s]", epoch, u_stage_l, u_stage_r)
         log.info("==== Train: Epoch %s: u_stage=[%s, %s]", epoch, u_stage_l, u_stage_r)
         batch_idx = 0
@@ -177,8 +179,10 @@ if __name__ == "__main__":
         running_corrects = 0.0
         running_loss = 0.0
 
-        # learner.update_gate_control(constant_gate(u_stage_r), u_stage=(u_stage_l, u_stage_r))
-        u_stage_l = u_stage_r
+        learner.update_gate_control(constant_gate(u_stage_r), u_stage=None) # (u_stage_l, u_stage_r))
+        if (epoch - start + 1) % 2 == 0:
+            u_stage_l = u_stage_r
+            u_stage_r += increment
         for i, data in enumerate(tqdm(train_dataset)):
             inputs, labels = data
             if cuda:

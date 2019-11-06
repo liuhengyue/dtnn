@@ -321,9 +321,10 @@ if __name__ == "__main__":
     net.flops((3, 16, 100, 160))
     # print(net)
 
-    # summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
+    summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
     x = torch.rand(1, 3, 16, 100, 160).cuda()
     u = torch.tensor(0.5).cuda()
+
     y, gs = net(x, u)
     print("output size: {} \n gate size: {} ".format(y.size(), len(gs)))
     print("gate matrix: \n {}".format([g[0] for g in gs]))

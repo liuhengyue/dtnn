@@ -113,7 +113,8 @@ if __name__ == "__main__":
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 80 * len(device_ids) if cuda else 1
+    batch_size = 60 * len(device_ids) if cuda else 1
+
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 

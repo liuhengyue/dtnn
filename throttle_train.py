@@ -154,8 +154,8 @@ class PGLearner():
         for i in range(0, self.ngate_levels):
             u_bins[i] = 0
         u_history = 0.0
-        # exploration_rate = math.e ** (-0.1 * (episode + 1))
-        exploration_rate = 0
+        exploration_rate = math.e ** (-0.1 * (episode + 1))
+        # exploration_rate = 0
         print("Exploration rate: %s", exploration_rate)
         log.info("Exploration rate: %s", exploration_rate)
         # cuda = torch.cuda.is_available()
@@ -183,7 +183,8 @@ class PGLearner():
                 # print(torch.max(output, 1)[0])
 
             # a ranges from 0 to 9
-            print("#1 STATE -----------\n", state.detach().cpu().numpy())
+
+            # print("#1 STATE -----------\n", state.detach().cpu().numpy())
 
             u = torch.take(self._us, state)
             # print("u ------\n", u.detach().cpu().numpy())
@@ -335,16 +336,16 @@ class UsageAccuracyRewardModel:
             # print(ratio_flops)
 
             # positive_r = ((1.5 - ratio_flops) * (0.1 + pred_max)) ** 2
-            positive_r = pred_max - ratio_flops + 0.5
-            # positive_r = 1 - ratio_flops
+            # positive_r = pred_max - ratio_flops + 0.5
+            positive_r = 1 - ratio_flops
             # negative_r less -> ratio_flops more -> pred_diff less
             # negative_r = -1 / torch.exp( - ratio_flops * pred_max)
             negative_r = - (pred_max + 0.5) * (ratio_flops + 1.5)
 
             r = torch.where(batch_pred_bool, positive_r, negative_r)
             # l2 normalize
-            r_norm = torch.norm(r)
-            r = r / r_norm
+            # r_norm = torch.norm(r)
+            # r = r / r_norm
 
             # r = (r - torch.mean(r)) / (torch.std(r) + 1e-16)
 
@@ -636,5 +637,5 @@ if __name__ == "__main__":
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=0, device_ids=[0], batch_size_per_gpu=20, mode=mode)
+    app = App(start_epoch=0, device_ids=[0,1,2,3], batch_size_per_gpu=25, mode=mode)
     app.main()

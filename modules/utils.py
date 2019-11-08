@@ -88,6 +88,24 @@ def load_model(self, state_dict, load_gate=True, strict=True):
         return k.startswith("gate.")
 
     own_state = self.state_dict()
+
+    # # remove bn keys
+    # bn_keys = ["fn." + str(i) for i in [5,9,12,16,19,23,26]]
+    # for name, param in state_dict.copy().items():
+    #     for bn_key in bn_keys:
+    #         if bn_key in name:
+    #             del state_dict[name]
+    # # change keys
+    # own_keys = ["fn." + str(i) for i in [7,9,12,14,17,19,22,24,26]] # own dict
+    # saved_keys = ["fn." + str(i) for i in [8, 11, 15, 18, 22, 25, 29, 31, 33]]
+    # map_keys = {"fn." + str(v) : own_keys[i] for i, v in enumerate([8,11,15,18,22,25,29,31,33])}
+
+    for name, param in state_dict.copy().items():
+        for saved_key in saved_keys:
+            if saved_key in name:
+                state_dict[name.replace(saved_key, map_keys[saved_key])] = state_dict[name]
+                del state_dict[name]
+
     for name, param in state_dict.items():
         if name in own_state:
             log.verbose("Load %s", name)

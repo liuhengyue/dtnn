@@ -61,7 +61,6 @@ def evaluate(u, results, learner, testloader, cuda_devices=None):
                 class_correct[label] += c[i]
                 class_total[label] += 1
 
-            break
 
         learner.finish_eval(u)
     log.info("test u=%s, total %s [%s/%s]", u, sum(class_correct) / sum(class_total), sum(class_correct), sum(class_total))
@@ -103,11 +102,12 @@ if __name__ == "__main__":
         print(load_info)
         log.info(load_info)
 
+    exit()
 
     ### GPU support ###
     cuda = torch.cuda.is_available()
     # cuda = False
-    device_ids = [0] if cuda else None
+    device_ids = [0, 1, 2, 3] if cuda else None
     # device_ids = [1]
     if cuda:
         net = net.cuda(device_ids[0])
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 60 * len(device_ids) if cuda else 1
+    batch_size = 70 * len(device_ids) if cuda else 1
 
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)

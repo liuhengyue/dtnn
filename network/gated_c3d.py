@@ -224,6 +224,9 @@ class GatedC3D(GatedChainNetwork):
                 self._log_gbar(g)
                 # debug: check the gate matrix
                 # print(g)
+                # for component in m.parameters():
+                #     print(component.requires_grad)
+
                 # print("Layer --------------------\n", m, "\n gate matrix --------------------\n",  g)
                 x = m(x, g)
             else:
@@ -292,7 +295,7 @@ def C3dDataNetwork(in_shape=(3, 16, 100, 160), num_classes=27, gate_during_eval=
             "in_shape": in_shape, "num_classes": num_classes}
 
     c3d_net = GatedC3D(c3d_pars["gate"], c3d_pars["in_shape"],
-                       c3d_pars["num_classes"], c3d_pars["c3d"], c3d_pars["fc"], dropout=0)
+                       c3d_pars["num_classes"], c3d_pars["c3d"], c3d_pars["fc"], dropout=0, normalize=False)
 
     return c3d_net
 # ----------------------------------------------------------------------------
@@ -321,7 +324,7 @@ if __name__ == "__main__":
     net.flops((3, 16, 100, 160))
     # print(net)
 
-    summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
+    # summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
     x = torch.rand(1, 3, 16, 100, 160).cuda()
     u = torch.tensor(0.5).cuda()
 

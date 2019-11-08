@@ -77,6 +77,10 @@ def u_vs_examples_plot(results):
     plt.xlabel("Image index", labelpad=100)
     plt.ylabel("Utilization parameter u")
 
+    from matplotlib.font_manager import findfont, FontProperties
+    font = findfont(FontProperties(family=['serif']))
+    print(font)
+
     plt.show()
 
 if __name__ == "__main__":

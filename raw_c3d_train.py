@@ -136,7 +136,7 @@ if __name__ == "__main__":
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
     # learning_rate = 4e-5
-    learning_rate = 5e-6
+    learning_rate = 5e-5
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -159,7 +159,7 @@ if __name__ == "__main__":
 
     ######################### train #######################
     # start = 0
-    train_epochs = 20
+    train_epochs = 10
     n_utilization_stages = 10
     seed = 1
     eval_after_epoch = False
@@ -179,12 +179,12 @@ if __name__ == "__main__":
         running_corrects = 0.0
         running_loss = 0.0
 
-        learner.update_gate_control(constant_gate(u_stage_r), u_stage=None) # (u_stage_l, u_stage_r))
-        if (epoch - start + 1) % 2 == 0:
+        learner.update_gate_control(constant_gate(u_stage_r), u_stage=(u_stage_l, u_stage_r))
+        if (epoch - start + 1) % (train_epochs // 10) == 0: # (train_epochs // 10)
             u_stage_l = u_stage_r
             u_stage_r += increment
         for i, data in enumerate(tqdm(train_dataset)):
-            inputs, labels = data
+            inputs, labels, _ = data
             if cuda:
                 inputs = inputs.cuda(device_ids[0])
                 labels = labels.cuda(device_ids[0])

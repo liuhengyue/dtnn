@@ -100,11 +100,11 @@ def load_model(self, state_dict, load_gate=True, strict=True):
     # saved_keys = ["fn." + str(i) for i in [8, 11, 15, 18, 22, 25, 29, 31, 33]]
     # map_keys = {"fn." + str(v) : own_keys[i] for i, v in enumerate([8,11,15,18,22,25,29,31,33])}
 
-    for name, param in state_dict.copy().items():
-        for saved_key in saved_keys:
-            if saved_key in name:
-                state_dict[name.replace(saved_key, map_keys[saved_key])] = state_dict[name]
-                del state_dict[name]
+    # for name, param in state_dict.copy().items():
+    #     for saved_key in saved_keys:
+    #         if saved_key in name:
+    #             state_dict[name.replace(saved_key, map_keys[saved_key])] = state_dict[name]
+    #             del state_dict[name]
 
     for name, param in state_dict.items():
         if name in own_state:

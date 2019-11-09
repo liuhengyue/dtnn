@@ -2,6 +2,7 @@ import json
 import glob
 import os
 import numpy as np
+from collections import defaultdict
 # import pandas as pd
 # import seaborn as sns
 import matplotlib
@@ -17,17 +18,18 @@ rcParams['figure.figsize'] = 15, 10
 rcParams['font.size'] = 25
 rcParams['axes.facecolor'] = '#ebebeb'
 rcParams['figure.autolayout'] = True
+plt.style.use('ggplot')
 # plt.tight_layout()
-def load_results():
+def load_logs():
     """
     load results json file by locating the latest .json file in logs/ dir.
     :return: results dict
     """
     results_files = glob.glob('logs/*.json')
-    print(results_files)
     latest_results_file_path = max(results_files, key=os.path.getctime)
     with open(latest_results_file_path, 'r') as f:
         latest_results_file = f.read()
+        print("load from {}".format(latest_results_file_path))
     # results format:
     # {
     #   0 : {'label' : 1 , 'prediction' : { 0.1 : 0, 0.2 : 1, ...} },
@@ -38,6 +40,47 @@ def load_results():
     #   results[img_id]['label'] gives the label
     #   results[img_id]['prediction'][0.1] gives the prediction when u == 0.1
     results = json.loads(latest_results_file)
+    return results
+
+
+def get_best_tradeoff_u(result):
+    """
+
+    :param result:
+    :return: [u_0, u_1, ..., u_best]
+    """
+    preds = []
+    label = result["label"]
+    u = 2.0
+    for k, v in result["prediction"].items():
+        # also get pred for each u
+        if v == label:
+            preds.append(float(k))
+        else:
+            preds.append(0)
+        if v == label and float(k) < u:
+            u = float(k)
+    if u == 2.0:
+        u = 0
+    preds.append(u)
+    return preds
+
+
+def process_logs(logs):
+    """
+    Define a format here:
+    {
+        'ids' : [image_id_0, ...]
+      if correct: u=0.1, u=0.2, ..., best_u
+         'us' : [[0.1, 0.7,...],...]
+        ...
+    }
+    :return:
+    """
+    results = defaultdict(list)
+    for k, v in logs.items():
+        results["ids"].append(k)
+        results["us"].append(get_best_tradeoff_u(v))
     return results
 
 
@@ -54,35 +97,56 @@ def u_vs_examples_plot(results):
     """
     # declarations of variables
     u_list = []
-    img_ids = list(results.keys())
+    img_ids = results["ids"]
     # print(img_ids)
-    index = np.array(img_ids[:100])
-    # index = pd.date_range("1 1 2000", periods=100, freq = "m", name = "date")
-    data = np.random.randn(index.size, 4).cumsum(axis=0)
+    index = np.array(img_ids)
+    data = np.array(results["us"])
+    best_u = np.sort(data[:, -1])
+
+    # test
+    # index = index[:1000]
+    # data = data[:1000]
+
+    # data, index = zip(*sorted(zip(best_u, index)))
+
     # init plot
     fig = plt.figure()
     ax = plt.axes()
-
+    ax.set_axisbelow(True)
     # plot data
-    ax.plot(index, data)
     ax.grid(linestyle='-', color='white')
-    ax.legend(['1', '2', '3', '4'], loc="lower center", bbox_to_anchor=(0.5, -0.2), ncol=4, frameon=False, facecolor='black')
-    # plot configurations
-    start, end = ax.get_xlim()
-    stepsize = 10
-    ax.xaxis.set_ticks(np.arange(start, end, stepsize))
 
+    # best u case
+    ax.plot(index, best_u)
+    plt.fill_betweenx(index, best_u, alpha=0.5)
+
+    # u = 0.5
+    u_5 = np.sort(data[:, 4])
+    ax.plot(index, u_5)
+    plt.fill_betweenx(index, u_5, alpha=0.5)
+
+    # u = 1.0
+    u_10 = np.sort(data[:, 9])
+    ax.plot(index, u_10)
+    plt.fill_betweenx(index, u_10, alpha=0.5)
+
+    ax.legend(['1', '2', '3'], loc="lower center", bbox_to_anchor=(0.5, -0.2), ncol=4, frameon=False, facecolor='black')
+    # plot configurations
+    # start, end = ax.get_xlim()
+    start, end = 0, index.size
+    stepsize = 2000
+    ax.xaxis.set_ticks(np.arange(start, end, stepsize))
+    # ax.xaxis.set_ticks([])
     # labels
     # plt.title("Controller")
-    plt.xlabel("Image index", labelpad=100)
+    plt.xlabel("Image index (sorted by u)", labelpad=100)
     plt.ylabel("Utilization parameter u")
 
-    from matplotlib.font_manager import findfont, FontProperties
-    font = findfont(FontProperties(family=['serif']))
-    print(font)
 
     plt.show()
 
 if __name__ == "__main__":
-    results = load_results()
+    logs = load_logs()
+    results = process_logs(logs)
+    # print(results)
     u_vs_examples_plot(results)

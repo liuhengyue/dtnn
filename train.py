@@ -18,7 +18,7 @@ from network import cpm_c3d_model
 
 # Use GPU if available else revert to CPU
 cuda = torch.cuda.is_available()
-devices = [1, 2, 3]
+devices = [0, 1, 2, 3]
 print("Devices being used:", devices)
 
 nEpochs = 50  # Number of epochs for training
@@ -159,13 +159,15 @@ def train_model(dataset=dataset, save_dir=save_dir, num_classes=num_classes, lr=
                 # scheduler.step()
                 model.train()
             else:
+                if epoch % 5 != 0:
+                    break
                 model.eval()
 
             for data in tqdm(trainval_loaders[phase]):
                 # if it did not load the dataset successfully for some images, skip
                 if data == []:
                     continue
-                inputs, labels = data
+                inputs, labels, _ = data
                 if cuda:
                     # move inputs and labels to the device the training is taking place on
                     inputs = inputs.cuda(devices[0])

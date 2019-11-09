@@ -12,7 +12,7 @@ import torch.optim as optim
 
 import numpy as np
 
-import torch.nn.functional as fn
+import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 import torch.nn.init as init
 
@@ -62,8 +62,9 @@ class GatedNetworkApp:
         self.checkpoint_mgr = CheckpointManager(output=".", input=".")
 
     def make_optimizer(self, parameters):
-        return optim.SGD(parameters, lr=1e-5, momentum=0.9)
-        # return optim.Adam( parameters, lr=.01 )
+        # return optim.SGD(parameters, lr=1e-5, momentum=0.9)
+        # return optim.Adam( parameters, lr=1e-2 )
+        return optim.RMSprop(parameters, lr=1e-5)
 
     def gated_network(self):
         return C3dDataNetwork(num_classes=27)
@@ -72,7 +73,7 @@ class GatedNetworkApp:
 # RL Learners
 class PGLearner():
 
-    def __init__(self, pgnet, data_network, train_dataset, test_dataset, reward, optimizer, to_device, device_ids=[1]):
+    def __init__(self, pgnet, data_network, train_dataset, test_dataset, reward, optimizer, to_device, device_ids=[1], batch_size=None):
         self.pgnet = pgnet
         self.loss = self.PGloss
         self.reward = reward
@@ -82,18 +83,30 @@ class PGLearner():
         self.to_device = to_device
         self.network = data_network
         self.device_ids = device_ids
+        self.batch_size = batch_size
         self.ngate_levels = 10
         self.inc = 1.0 / self.ngate_levels
         # u = 0 does not make sense
         # if 10 levels: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
         self._us = torch.tensor([i * self.inc for i in range(1, self.ngate_levels+1)], requires_grad=False).to(self.device_ids[0])
+        # (10, B) [[0.1, 0.1, ...], [0.2, 0.2, ...], ..., [1.0, 1.0, ...]]
+        self.u_space = torch.repeat_interleave(self._us, self.batch_size, dim=0).view(-1, self.batch_size)
         self.ce = torch.nn.CrossEntropyLoss(reduction='none')
         # print(self._us)
 
-    def PGloss(self, yhat, reward):
+    def PGloss(self, yhat, reward, action):
         # return torch.mean(-torch.log(yhat + .000001) * reward)
+        # return F.smooth_l1_loss(yhat, reward)
         # https://github.com/pytorch/examples/blob/master/reinforcement_learning/reinforce.py
-        return torch.mean(-torch.log(yhat) * reward)
+        # print(reward)
+        # print(torch.log(yhat))
+        # add weights to contextual net prediction
+        # (B, 10)
+        reward[torch.arange(0, self.batch_size, dtype=torch.long), action] *= 2.0
+        # l2 normalize rewards
+        reward /= torch.norm(reward, dim=1).view(-1, 1)
+
+        return torch.mean(-torch.log(yhat + torch.finfo().eps) * reward)
 
     def eval_policy(self):
         self.pgnet.eval()
@@ -154,7 +167,7 @@ class PGLearner():
         for i in range(0, self.ngate_levels):
             u_bins[i] = 0
         u_history = 0.0
-        exploration_rate = math.e ** (-0.1 * (episode + 1))
+        exploration_rate = math.e ** (-0.5 * (episode + 1))
         # exploration_rate = 0
         print("Exploration rate: %s", exploration_rate)
         log.info("Exploration rate: %s", exploration_rate)
@@ -175,39 +188,42 @@ class PGLearner():
             randnum = np.random.uniform()
             # print(randnum, exploration_rate)
             if randnum < exploration_rate:
-                state = torch.randint(0, self.ngate_levels, (output.size(0),), device=output.device)
+                action = torch.randint(0, self.ngate_levels, (self.batch_size,), device=output.device)
                 # print("RANDOM ACTION TAKEN")
             else:
                 # a = output.argmax(0).item()
-                state = torch.argmax(output, 1)
+                action = torch.argmax(output, 1)
                 # print(torch.max(output, 1)[0])
 
             # a ranges from 0 to 9
 
             # print("#1 STATE -----------\n", state.detach().cpu().numpy())
 
-            u = torch.take(self._us, state)
+            u = torch.take(self._us, action)
             # print("u ------\n", u.detach().cpu().numpy())
-            for k in state.cpu().numpy():
+            for k in action.cpu().numpy():
                 u_bins[k] += 1
 
             u_history += torch.sum(u).item()
             # print("# ------ u ------", u)
-            if u is None:  # Network turned off
-                # print("problem.step.yhat: None")
-                yhat = None
-                gs = None
+
+            # loop over each possible u in [0.1,...,1.0] for each example
+            rewards = []
+            for m in range(self.ngate_levels):
+                yhat, gs = self.network(inputs, self.u_space[m])
+                # yhats.append(yhat)
+            # size (B, 27 * 10)
+            # yhats = torch.cat(yhats, dim=1)
+            # print(yhats.size())
+            #print("problem.step.logits: %s", yhat)
+            #print("problem.step.gs: %s", gs)
+
+            #print("problem.step.yhat: %s", yhat.item())
                 r = self.reward.reward(labels, yhat, gs)
+                rewards.append(r)
 
-            else:
-                # u = torch.tensor([float(u)]).to(self.device_ids[0])
-                yhat, gs = self.network(inputs, u)
-                #print("problem.step.logits: %s", yhat)
-                #print("problem.step.gs: %s", gs)
-
-                #print("problem.step.yhat: %s", yhat.item())
-                r = self.reward.reward(labels, yhat, gs)
-
+            # rewards matrix for all u
+            rewards = torch.stack(rewards).t_()
 
             # if randnum > exploration_rate:
             #     print("#2 REWARD -----------\n", r.detach().cpu().numpy())
@@ -218,27 +234,31 @@ class PGLearner():
             # print(r)
             # logits = self.ce(output,  u_gts)
             state_probs = torch.nn.Softmax(dim=1)(output)
-            picked_state_probs = torch.gather(state_probs, 1, state.view(-1, 1)).view(-1)
+            # print(state_probs)
+            # picked_state_probs = torch.gather(state_probs, 1, state.view(-1, 1)).view(-1)
+
             # ce_loss = self.ce(logits, u_gts)
             # print(ce_loss)
             # print("# State softmax -----------\n", state_probs.detach().cpu().numpy())
             # print("# Picked state softmax -----------\n", picked_state_probs.detach().cpu().numpy())
             # print("# Reward -----------\n", r.detach().cpu().numpy())
             # print("logits: ", logits)
-            loss = self.loss(picked_state_probs, r)
+            # put more weights on picked u
+            loss = self.loss(state_probs, rewards, action)
             # print("# Loss -----------\n", loss.detach().cpu().numpy())
-            probs = torch.nn.Softmax(dim=1)(yhat)
-            preds = torch.max(probs, 1)[1]
-            batch_corrects = torch.sum(preds == labels.data).item()
-            running_corrects += batch_corrects
+            # probs = torch.nn.Softmax(dim=1)(yhat)
+            # preds = torch.max(probs, 1)[1]
+            # batch_corrects = torch.sum(preds == labels.data).item()
+            # running_corrects += batch_corrects
             running_loss += loss.item()
-            running_reward += torch.mean(r).item()
+            predict_rewards = rewards[torch.arange(0, self.batch_size, dtype=torch.long), action]
+            running_reward += torch.mean(predict_rewards).item()
 
             if i % 10 == 0:
                 running_num = (i + 1) * self.train_dataset.batch_size
                 print("Running loss: ", running_loss / running_num)
                 print("Running reward: ", running_reward / running_num)
-                print("Running corrects: ", running_corrects / running_num)
+                # print("Running corrects: ", running_corrects / running_num)
                 print("Running average u: ", u_history / running_num)
                 print("Running u bins: ", u_bins)
             if i % 400 == 0:
@@ -246,9 +266,12 @@ class PGLearner():
                 log.info("Step - %s", i)
                 log.info("Running loss: %s", running_loss / running_num)
                 log.info("Running reward: %s", running_reward / running_num)
-                log.info("Running corrects: %s", running_corrects / running_num)
+                # log.info("Running corrects: %s", running_corrects / running_num)
                 log.info("Running average u: %s ", u_history / running_num)
                 log.info("Running u bins: %s", u_bins)
+
+            # if i == 100:
+            #     break
 
 
             # print("LOSS", loss)
@@ -338,8 +361,10 @@ class UsageAccuracyRewardModel:
             # positive_r = ((1.5 - ratio_flops) * (0.1 + pred_max)) ** 2
             # positive_r = pred_max - ratio_flops + 0.5
             positive_r = 1 - ratio_flops
+            # positive_r = ratio_flops
             # negative_r less -> ratio_flops more -> pred_diff less
             # negative_r = -1 / torch.exp( - ratio_flops * pred_max)
+            # negative_r = torch.ones(positive_r.size(), device=positive_r.device) * (-1)
             negative_r = - (pred_max + 0.5) * (ratio_flops + 1.5)
 
             r = torch.where(batch_pred_bool, positive_r, negative_r)
@@ -411,6 +436,7 @@ class App(GatedNetworkApp):
         self.device_ids = device_ids
         self.data_parallel = True if len(device_ids) > 1 else False
         self.batch_size_per_gpu = batch_size_per_gpu
+        self.batch_size = self.batch_size_per_gpu * len(self.device_ids)
         # self.device = "cpu"
         self.to_device = lambda t: t
         self.mode = mode
@@ -432,12 +458,9 @@ class App(GatedNetworkApp):
         subset = ['No gesture', 'Swiping Down', 'Swiping Left', 'Swiping Right', 'Swiping Up']
         subset = None
         train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, subset=subset)
-        batch_size = self.batch_size_per_gpu * len(self.device_ids)
-        self.train_dataset = DataLoader(train_data, batch_size=batch_size,
-                                        shuffle=True, drop_last=True)
+        self.train_dataset = DataLoader(train_data, batch_size=self.batch_size, shuffle=True, drop_last=True)
         test_data = VideoDataset(dataset='20bn-jester', split='val', clip_len=16, subset=subset)
-        batch_size = 2 * self.batch_size_per_gpu * len(self.device_ids)
-        self.test_dataset = DataLoader(test_data, batch_size=batch_size, shuffle=False, drop_last=False)
+        self.test_dataset = DataLoader(test_data, batch_size=2*self.batch_size, shuffle=False, drop_last=False)
 
     def init_learner(self):
         pgnet = ContextualBanditNet()
@@ -477,7 +500,8 @@ class App(GatedNetworkApp):
             pgnet = torch.nn.DataParallel(pgnet, device_ids=self.device_ids)
             print("Policy network - using multi-gpus: ", self.device_ids)
 
-        self.learner = PGLearner(pgnet, self.data_network, self.train_dataset, self.test_dataset, reward, self.make_optimizer(pgnet.parameters()), self.to_device, self.device_ids)
+        self.learner = PGLearner(pgnet, self.data_network, self.train_dataset, self.test_dataset,
+                                 reward, self.make_optimizer(pgnet.parameters()), self.to_device, self.device_ids, batch_size=self.batch_size)
 
         return flops
 
@@ -637,5 +661,5 @@ if __name__ == "__main__":
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=0, device_ids=[0,1,2,3], batch_size_per_gpu=25, mode=mode)
+    app = App(start_epoch=0, device_ids=[0], batch_size_per_gpu=5, mode=mode)
     app.main()

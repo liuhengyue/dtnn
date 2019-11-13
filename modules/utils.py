@@ -49,8 +49,8 @@ def model_file(directory, epoch, suffix=""):
     return os.path.join(directory, filename)
 
 
-def latest_checkpoints(directory):
-    return glob.glob(os.path.join(directory, "model_*.pkl.latest"))
+def latest_checkpoints(directory, prefix="model"):
+    return glob.glob(os.path.join(directory, prefix + "_*.pkl.latest"))
 
 def save_model(network, output, elapsed_epochs, force_persist=False):
     if not os.path.exists(output):

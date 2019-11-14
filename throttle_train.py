@@ -86,7 +86,7 @@ class PGLearner():
         self.batch_size = batch_size
         self.start_epoch = start_epoch
         self.ngate_levels = 10
-        self.inc = 1.0 / self.ngate_levels
+        self.inc = 0.1 #1.0 / self.ngate_levels
         # u = 0 does not make sense
         # if 10 levels: 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
         self._us = torch.tensor([i * self.inc for i in range(1, self.ngate_levels+1)], requires_grad=False).to(self.device_ids[0])
@@ -195,7 +195,7 @@ class PGLearner():
         for i in range(0, self.ngate_levels):
             reward_bins[i] = 0
         u_history = 0.0
-        exploration_rate = math.e ** (-0.1 * (episode / 10 + 0.5))
+        exploration_rate = math.e ** (-0.1 * (episode / 2 + 0.5))
         # exploration_rate = 0
         print("Exploration rate: %s", exploration_rate)
         log.info("Exploration rate: %s", exploration_rate)
@@ -216,6 +216,8 @@ class PGLearner():
             # print(randnum, exploration_rate)
             if randnum < exploration_rate:
                 action = torch.randint(0, self.ngate_levels, (self.batch_size,), device=output.device)
+                # action = torch.randint(0, 1, (self.batch_size,), device=output.device)
+                action = torch.where(action == 1, torch.tensor(0, device=output.device), action)
                 # print("RANDOM ACTION TAKEN")
             else:
                 # a = output.argmax(0).item()
@@ -286,7 +288,7 @@ class PGLearner():
             running_reward += torch.mean(r).item()
 
             # update every 100 steps
-            # if i % 100 == 0:
+            # if i % 2 == 0:
             #     self.update_policy()
 
             if i % 10 == 0:
@@ -400,16 +402,19 @@ class UsageAccuracyRewardModel:
 
             # positive_r = ((1.5 - ratio_flops) * (0.1 + pred_max)) ** 2
             # positive_r = pred_max - ratio_flops + 0.5
-            positive_r = torch.exp((1 - ratio_flops)) # [0, 7]
+            positive_r = torch.exp(1 * (1 - ratio_flops)) * ((ratio_flops + 0.5) ** 2) # [0, 7]
             # normalize to [0, 1]
-            positive_r = positive_r / (torch.max(positive_r) + torch.finfo().eps)
+            # positive_r = positive_r / torch.norm(positive_r)
+            positive_r = (positive_r - torch.mean(positive_r)) / (torch.std(positive_r) + torch.finfo().eps)
+            # positive_r = positive_r / (torch.max(positive_r) + torch.finfo().eps)
             # positive_r = ratio_flops
             # negative_r less -> ratio_flops more -> pred_diff less
             # negative_r = -1 / torch.exp( - ratio_flops * pred_max)
             # negative_r = torch.ones(positive_r.size(), device=positive_r.device) * (-1)
             negative_r = - (pred_max + 0.5) * (ratio_flops + 1.5)
             # normalize to [-1, 0]
-            negative_r = negative_r / (torch.abs(torch.min(negative_r)) + torch.finfo().eps)
+            negative_r = negative_r / torch.norm(negative_r)
+            # negative_r = negative_r / (torch.abs(torch.min(negative_r)) + torch.finfo().eps)
 
             r = torch.where(batch_pred_bool, positive_r, negative_r)
 
@@ -417,7 +422,7 @@ class UsageAccuracyRewardModel:
             # r_norm = torch.norm(r)
             # r = r / r_norm
 
-            r = (r - torch.mean(r)) / (torch.std(r) + torch.finfo().eps)
+            # r = (r - torch.mean(r)) / (torch.std(r) + torch.finfo().eps)
             # print(r)
 
             return r
@@ -708,5 +713,5 @@ if __name__ == "__main__":
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=23, device_ids=[0, 1, 2, 3], batch_size_per_gpu=25, mode=mode)
+    app = App(start_epoch=24, device_ids=[0, 1, 2, 3], batch_size_per_gpu=25, mode=mode)
     app.main()

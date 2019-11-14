@@ -141,7 +141,7 @@ def u_vs_examples_plot(results):
     # index = index[:1000]
     # data = data[:1000, :]
     # best_u = np.sort(data[:, -1])
-    controller_results = load_controller_logs("logs/eval_raw_c3d_2019-11-12_19-25-06.json")
+    controller_results = load_controller_logs("logs/eval_raw_c3d_2019-11-13_14-16-34.json")
 
     controller_results = np.array(controller_results).reshape((-1, 1))
 

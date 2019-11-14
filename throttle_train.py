@@ -195,7 +195,7 @@ class PGLearner():
         for i in range(0, self.ngate_levels):
             reward_bins[i] = 0
         u_history = 0.0
-        exploration_rate = math.e ** (-0.1 * (episode / 2 + 0.5))
+        exploration_rate = math.e ** (-0.1 * (episode / 5 + 0.5))
         # exploration_rate = 0
         print("Exploration rate: %s", exploration_rate)
         log.info("Exploration rate: %s", exploration_rate)
@@ -217,7 +217,7 @@ class PGLearner():
             if randnum < exploration_rate:
                 action = torch.randint(0, self.ngate_levels, (self.batch_size,), device=output.device)
                 # action = torch.randint(0, 1, (self.batch_size,), device=output.device)
-                action = torch.where(action == 1, torch.tensor(0, device=output.device), action)
+                action = torch.where(action > 4, action // 2, action)
                 # print("RANDOM ACTION TAKEN")
             else:
                 # a = output.argmax(0).item()
@@ -713,5 +713,5 @@ if __name__ == "__main__":
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=24, device_ids=[0, 1, 2, 3], batch_size_per_gpu=25, mode=mode)
+    app = App(start_epoch=25, device_ids=[0, 1, 2, 3], batch_size_per_gpu=25, mode=mode)
     app.main()

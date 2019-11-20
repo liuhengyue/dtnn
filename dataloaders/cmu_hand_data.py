@@ -38,7 +38,7 @@ import imageio
 import glob
 import imgaug as ia
 import imgaug.augmenters as iaa
-from imgaug.augmentables import Keypoint, KeypointsOnImage
+from imgaug.augmentables import Keypoint, KeypointsOnImage # probably removed by imgaug
 from src.util import *
 
 def activator(images, augmenter, parents, default):

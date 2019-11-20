@@ -185,10 +185,15 @@ def get_kpts(map_6, img_h = 368.0, img_w = 368.0, t = 0.01):
     return kpts
 
 
-def draw_paint(im, kpts, image_path=None, gt_kpts=None, draw_edges=True, show=False):
+def draw_paint(im, kpts, image_path=None, gt_kpts=None, draw_edges=True, show=False, offsets=None):
     # first need copy the image !!! Or it won't draw.
     im = im.copy()
     # draw points
+    if offsets:
+        for i in range(len(kpts)):
+            if kpts[i][0] > -1 and kpts[i][1] > -1:
+                kpts[i][0] -= offsets[0]
+                kpts[i][1] -= offsets[1]
     for k in kpts:
         x = k[0]
         y = k[1]

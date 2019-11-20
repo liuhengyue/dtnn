@@ -64,7 +64,7 @@ class GatedNetworkApp:
     def make_optimizer(self, parameters):
         # return optim.SGD(parameters, lr=1e-5, momentum=0.9)
         # return optim.Adam( parameters, lr=1e-2 )
-        return optim.RMSprop(parameters, lr=1e-6)
+        return optim.RMSprop(parameters, lr=1e-8)
 
     def gated_network(self):
         return C3dDataNetwork(num_classes=27)
@@ -195,7 +195,7 @@ class PGLearner():
         for i in range(0, self.ngate_levels):
             reward_bins[i] = 0
         u_history = 0.0
-        exploration_rate = math.e ** (-0.1 * (episode / 5 + 0.5))
+        exploration_rate = math.e ** (-0.1 * (episode / 0.2 + 0.5))
         # exploration_rate = 0
         print("Exploration rate: %s", exploration_rate)
         log.info("Exploration rate: %s", exploration_rate)
@@ -215,9 +215,11 @@ class PGLearner():
             randnum = np.random.uniform()
             # print(randnum, exploration_rate)
             if randnum < exploration_rate:
-                action = torch.randint(0, self.ngate_levels, (self.batch_size,), device=output.device)
+                # action = torch.randint(0, self.ngate_levels, (self.batch_size,), device=output.device)
                 # action = torch.randint(0, 1, (self.batch_size,), device=output.device)
-                action = torch.where(action > 4, action // 2, action)
+                action = torch.from_numpy(np.random.choice(10, self.batch_size, p=[0.23, 0.12, 0.1, 0.1, 0.05, 0.1, 0.1, 0.1, 0.05, 0.05])).to(output.device)
+                # action = torch.randint(0, 1, (self.batch_size,), device=output.device)
+                # action = torch.where(action > 4, action // 2, action)
                 # print("RANDOM ACTION TAKEN")
             else:
                 # a = output.argmax(0).item()
@@ -289,7 +291,7 @@ class PGLearner():
 
             # update every 100 steps
             # if i % 2 == 0:
-            #     self.update_policy()
+            # self.update_policy()
 
             if i % 10 == 0:
                 self.update_policy()
@@ -317,6 +319,8 @@ class PGLearner():
                 log.info("Running reward bins: %s", reward_bins)
                 log.info("Total reward: %s", total_reward)
                 log.info("Total loss: %s", running_loss)
+            if i == 400:
+                break
 
         self.update_policy()
 
@@ -402,19 +406,20 @@ class UsageAccuracyRewardModel:
 
             # positive_r = ((1.5 - ratio_flops) * (0.1 + pred_max)) ** 2
             # positive_r = pred_max - ratio_flops + 0.5
-            positive_r = torch.exp(1 * (1 - ratio_flops)) * ((ratio_flops + 0.5) ** 2) # [0, 7]
+            positive_r = torch.exp(1 * (1 - ratio_flops)) * ((1 - ratio_flops + 1) ** 2) # [0, 7]
             # normalize to [0, 1]
             # positive_r = positive_r / torch.norm(positive_r)
             positive_r = (positive_r - torch.mean(positive_r)) / (torch.std(positive_r) + torch.finfo().eps)
-            # positive_r = positive_r / (torch.max(positive_r) + torch.finfo().eps)
+            # positive_r = positive_r / torch.norm(positive_r)
+            positive_r = positive_r / (torch.max(positive_r) + torch.finfo().eps)
             # positive_r = ratio_flops
             # negative_r less -> ratio_flops more -> pred_diff less
             # negative_r = -1 / torch.exp( - ratio_flops * pred_max)
             # negative_r = torch.ones(positive_r.size(), device=positive_r.device) * (-1)
             negative_r = - (pred_max + 0.5) * (ratio_flops + 1.5)
             # normalize to [-1, 0]
-            negative_r = negative_r / torch.norm(negative_r)
-            # negative_r = negative_r / (torch.abs(torch.min(negative_r)) + torch.finfo().eps)
+            # negative_r = negative_r / torch.norm(negative_r)
+            negative_r = negative_r / (torch.abs(torch.min(negative_r)) + torch.finfo().eps)
 
             r = torch.where(batch_pred_bool, positive_r, negative_r)
 
@@ -713,5 +718,5 @@ if __name__ == "__main__":
     handler = logging.FileHandler(log_path, "w", "utf-8")
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
-    app = App(start_epoch=25, device_ids=[0, 1, 2, 3], batch_size_per_gpu=25, mode=mode)
+    app = App(start_epoch=1, device_ids=[0, 1, 2, 3], batch_size_per_gpu=10, mode=mode)
     app.main()

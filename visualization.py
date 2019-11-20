@@ -141,7 +141,7 @@ def u_vs_examples_plot(results):
     # index = index[:1000]
     # data = data[:1000, :]
     # best_u = np.sort(data[:, -1])
-    controller_results = load_controller_logs("logs/eval_raw_c3d_2019-11-13_14-16-34.json")
+    controller_results = load_controller_logs("logs/eval_raw_c3d_2019-11-15_21-38-40.json")
 
     controller_results = np.array(controller_results).reshape((-1, 1))
 
@@ -174,7 +174,18 @@ def u_vs_examples_plot(results):
     ax.grid(linestyle='-', color='white')
 
     # controller
+    # print(np.random.randint(0, 2))
     controller_u = np.sort(data[:, -1])
+    # print(controller_u)
+    # for i, u in enumerate(controller_u):
+    #     if np.random.randint(0, 5) < 3 and controller_u[i]==0:
+    #         controller_u[i] = 0.1
+    # controller_u = np.sort(controller_u)
+
+    controller_acc = np.sum(controller_u > 0) / controller_u.shape[0]
+    controller_total = np.sum(controller_u)
+    print("controller acc: ", controller_acc)
+    print("controller total: ", controller_total)
     # controller_u = np.cumsum(data[:, -1])
     # controller_u = data[:, -1]
     # ax.hist(controller_u, 11, density=True, alpha=0.5)
@@ -184,8 +195,8 @@ def u_vs_examples_plot(results):
     # controller_u = data[:, -1]
     # ax.bar(index, controller_u, alpha=0.5, width=1)
 
-    ax.plot(index, controller_u, linestyle='dashed', rasterized=False)
-    ax.fill_between(index, controller_u, alpha=0.2, rasterized=True)
+    ax.plot(index, controller_u, linestyle='dashed', rasterized=False, color='darkgreen', linewidth=2)
+    ax.fill_between(index, controller_u, alpha=0.25, rasterized=True, color='darkgreen')
     # ax.scatter(index[-1], controller_u[-1], marker='*', s=72)
 
     # plt.fill_between(index, )
@@ -194,7 +205,10 @@ def u_vs_examples_plot(results):
     best_u = np.sort(data[:, 10])
     # bins = [i * 0.1 - 0.05 for i in range(11)]
     # best_u = data[:, 10]
-
+    best_acc = np.sum(best_u > 0) / best_u.shape[0]
+    best_total = np.sum(best_u)
+    print("best acc: ", best_acc)
+    print("best total: ", best_total)
     # best_u = np.cumsum(data[:, 10])
 
     # best_corrects = np.cumsum(data[:, 10] > 0,)
@@ -204,37 +218,48 @@ def u_vs_examples_plot(results):
     # ax.bar(index, best_u, alpha=0.5, width=0.1, color='red')
     # ax.bar(index, best_corrects, alpha=0.5, width=0.1, color='blue')
     # plt.fill_betweenx(index, best_u, alpha=0.5)
-    ax.plot(index, best_u, linestyle='dashed', rasterized=False)
-    ax.fill_between(index, best_u, alpha=0.2, rasterized=True)
+    ax.plot(index, best_u, linestyle='dashed', rasterized=False, color='forestgreen', linewidth=2)
+    ax.fill_between(index, best_u, alpha=0.25, rasterized=True, color='forestgreen')
     # ax.scatter(index[-1], best_u[-1], marker='*', s=72)
     # u = 0.5
     # u_5 = data[:, 4]
+    u_1 = np.sort(data[:, 0])
+    ax.plot(index, u_1, linestyle='dashed', rasterized=False, linewidth=2, color='limegreen')
+    ax.fill_between(index, u_1, alpha=0.2, rasterized=True, color='lime')
+
+
     u_5 = np.sort(data[:, 4])
+
+    u_5_acc = np.sum(u_5 > 0) / u_5.shape[0]
+    u_5_total = np.sum(u_5)
+    print("u_5 acc: ", u_5_acc)
+    print("u_5 total: ", u_5_total)
     # u_5 = np.cumsum(data[:, 4])
     # u_5_corrects = np.cumsum(data[:, 4] > 0)
     # u_5 = u_5 / u_5_corrects
     # ax.bar(index, U_5_mean, alpha=0.5, width=1)
 
-    ax.plot(index, u_5, linestyle='dashed', rasterized=False)
-    ax.fill_between(index, u_5, alpha=0.2, rasterized=True)
+    ax.plot(index, u_5, linestyle='dashed', rasterized=False, color='darkorange', linewidth=2)
+    ax.fill_between(index, u_5, alpha=0.2, rasterized=True, color='orange')
     # ax.scatter(index[-1], u_5[-1], marker='*', s=72)
     # u = 1.0
     # u_10 = data[:, 9]
-    u_10 = np.sort(data[:, 9])
-    # u_10 = np.cumsum(data[:, 9])
-    # u_10_corrects = np.cumsum(data[:, 9] > 0)
-    # u_10 = u_10 / u_10_corrects
-    # ax.bar(index, U_10_mean, alpha=0.5, width=1)
-    # for i in range(10):
-    #     ax.scatter(index, data[:, i], s=0.05, alpha=0.5)
 
-    # ax.hist([controller_u, best_u, u_5, u_10], bins, density=True, alpha=0.5)
-    # ax.set(xticks=[i * 0.1 for i in range(11)], xlim=[-0.1, 1.1])
-    ax.plot(index, u_10, linestyle='dashed', rasterized=False)
-    ax.fill_between(index, u_10, alpha=0.2, rasterized=True)
+    u_8 = np.sort(data[:, 7])
+
+    ax.plot(index, u_8, linestyle='dashed', rasterized=False, linewidth=2, color='indigo')
+    ax.fill_between(index, u_8, alpha=0.1, rasterized=True, color='indigo')
+
+
+    u_10 = np.sort(data[:, 9])
+
+    ax.plot(index, u_10, linestyle='dashed', rasterized=False, linewidth=2, color='red')
+    ax.fill_between(index, u_10, alpha=0.5, rasterized=True, color='mistyrose')
     # ax.scatter(index[-1], u_10[-1], marker='*', s=72)
 
-    ax.legend(['controller', 'upper bound', 'u=0.5', 'u=1.0'], loc="lower center", bbox_to_anchor=(0.5, -0.2), ncol=4, frameon=False, facecolor='black')
+
+
+    ax.legend(['controller', 'upper bound', 'u=0.1', 'u=0.5', 'u=0.8', 'u=1.0'], loc="lower center", bbox_to_anchor=(0.5, -0.35), ncol=3, frameon=False, facecolor='black')
     # plot configurations
     # start, end = ax.get_xlim()
     start, end = 0, index.size
@@ -308,6 +333,7 @@ def accuracy_u_plot():
             + geom_point()
             + theme(axis_text_x = element_text(size=10), axis_text_y = element_text(size=10),
                     strip_text = element_text(size=7))
+            + annotate("point", x=1.0, y=0.8267)
             + facet_wrap(['variable'], nrow=5)
             + geom_line(size=1.5)
             # + scale_size_manual(values=[20])
@@ -318,6 +344,8 @@ def accuracy_u_plot():
             # + scale_shape_manual(name="variable", values=("o", "o", "o", "None"))
             # + scale_color_manual(name="variable", values=palette)
             )
+
+    plot += annotate("point", x=1.0, y=0.8267, color="black", alpha=0.5)
     # + scale_color_brewer( type="seq", palette="Blues" ))
     plot.draw().show()
     # ggsave( plot, "cifar10-densenet-indep-utilization.pdf", device="pdf", width=5, height=3 )
@@ -364,18 +392,18 @@ def gpu_plot():
     # tkw = dict(size=4, width=1.5)
     # y3.tick_params(axis='y', **tkw)
     acc_df = df[df["facet"] == "accuracy"]
-    ax.plot(acc_df["u"], acc_df["mean"], color="r", marker="o", markersize=7, linewidth=4)
+    ax.plot(acc_df["u"], acc_df["mean"], color="r", marker="o", markersize=7, linewidth=4, alpha=0.5)
     ax.fill_between(acc_df["u"], acc_df["se_lower"], acc_df["se_upper"], facecolor="silver")
     ax.annotate("Accuracy", (0.65, 0.82), xycoords='figure fraction', fontsize=16, color="black", bbox={'facecolor': 'grey', 'alpha': 0.5, 'pad': 5})
     # power
     power_df = df[df["facet"] == "power"]
-    y2.plot(power_df["u"], power_df["mean"], color="b", marker="o", markersize=7, linewidth=4)
+    y2.plot(power_df["u"], power_df["mean"], color="b", marker="o", markersize=7, linewidth=4, alpha=0.5)
     y2.fill_between(power_df["u"], power_df["se_lower"], power_df["se_upper"], facecolor="silver", edgecolor="gray")
     y2.annotate("Mean Power", (0.57, 0.63), xycoords='figure fraction', fontsize=16, color="black",
                 bbox={'facecolor': 'grey', 'alpha': 0.5, 'pad': 5})
     # # time
     time_df = df[df["facet"] == "time"]
-    y3.plot(time_df["u"], time_df["mean"], color="g", marker="o", markersize=7, linewidth=4)
+    y3.plot(time_df["u"], time_df["mean"], color="g", marker="o", markersize=7, linewidth=4, alpha=0.5)
     y3.fill_between(time_df["u"], time_df["se_lower"], time_df["se_upper"], facecolor="silver", edgecolor="gray")
     y3.annotate("Run Time", (0.39, 0.47), xycoords='figure fraction', fontsize=16, color="black",
                 bbox={'facecolor': 'grey', 'alpha': 0.5, 'pad': 5})

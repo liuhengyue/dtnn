@@ -1,5 +1,27 @@
-1 No gesture
-2 Swiping Down
-3 Swiping Left
-4 Swiping Right
-5 Swiping Up
+1 Doing other things
+2 Drumming Fingers
+3 No gesture
+4 Pulling Hand In
+5 Pulling Two Fingers In
+6 Pushing Hand Away
+7 Pushing Two Fingers Away
+8 Rolling Hand Backward
+9 Rolling Hand Forward
+10 Shaking Hand
+11 Sliding Two Fingers Down
+12 Sliding Two Fingers Left
+13 Sliding Two Fingers Right
+14 Sliding Two Fingers Up
+15 Stop Sign
+16 Swiping Down
+17 Swiping Left
+18 Swiping Right
+19 Swiping Up
+20 Thumb Down
+21 Thumb Up
+22 Turning Hand Clockwise
+23 Turning Hand Counterclockwise
+24 Zooming In With Full Hand
+25 Zooming In With Two Fingers
+26 Zooming Out With Full Hand
+27 Zooming Out With Two Fingers

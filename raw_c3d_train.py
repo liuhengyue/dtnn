@@ -21,7 +21,6 @@ import re
 from network.gated_c3d import C3dDataNetwork
 
 
-
 def evaluate(elapsed_epochs, learner, testloader, cuda_devices=None):
     seed = 1
     # Hyperparameters interpret their 'epoch' argument as index of the current
@@ -34,7 +33,7 @@ def evaluate(elapsed_epochs, learner, testloader, cuda_devices=None):
     with torch.no_grad():
         learner.start_eval(elapsed_epochs, seed)
         for (batch_idx, data) in enumerate(tqdm(testloader)):
-            images, labels = data
+            images, labels, _ = data
             if cuda_devices:
                 images = images.cuda(cuda_devices[0])
                 labels = labels.cuda(cuda_devices[0])
@@ -76,7 +75,15 @@ if __name__ == "__main__":
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
     root_logger.addHandler(handler)
 
-    net = C3dDataNetwork((3, 16, 100, 160))
+    net = C3dDataNetwork((3, 16, 100, 160), num_classes=27)
+    # init will all weights to zero
+    # def weights_init(m):
+    #     classname = m.__class__.__name__
+    #     # print(classname)
+    #     if classname in ['Conv3d', 'FullyConnected']:
+    #         nn.init.zeros_(m.weight.data)
+    #         nn.init.zeros_(m.bias.data)
+    # net.apply(weights_init)
     gate_network = net.gate
     ################### pre-trained
     pretrained = True
@@ -87,14 +94,14 @@ if __name__ == "__main__":
         start = int(re.findall("\d+", os.path.basename(filename))[0])
         with open(filename, "rb") as f:
             state_dict = torch.load(f, map_location="cpu")
-            load_model(net, state_dict, load_gate=True, strict=True)
+            load_model(net, state_dict, load_gate=True, strict=False)
     else:
         start = 0
 
     ### GPU support ###
     cuda = torch.cuda.is_available()
     # cuda = False
-    device_ids = [0, 1, 2, 3]
+    device_ids = [1, 2, 3]
     # device_ids = [1]
     if cuda:
         net = net.cuda(device_ids[0])
@@ -110,13 +117,14 @@ if __name__ == "__main__":
     # config.read('conf.text')
     # train_data_dir = config.get('data', 'train_data_dir')
     # train_label_dir = config.get('data', 'train_label_dir')
-    batch_size = 24 * len(device_ids)
+    batch_size = 20 * len(device_ids)
     # train_data = CMUHand(data_dir=train_data_dir, label_dir=train_label_dir)
     # train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
     # gesture dataset
     from dataloaders.dataset import VideoDataset
     subset = ['No gesture', 'Swiping Down', 'Swiping Up', 'Swiping Left', 'Swiping Right']
+    subset = None
     train_data = VideoDataset(dataset='20bn-jester', split='train', clip_len=16, subset=subset)
     train_dataset = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
     test_data = VideoDataset(dataset='20bn-jester', split='val', clip_len=16, subset=subset)
@@ -128,7 +136,7 @@ if __name__ == "__main__":
     import nnsearch.pytorch.gated.learner as glearner
     lambda_gate = 1.0
     # learning_rate = 4e-5
-    learning_rate = 4e-8
+    learning_rate = 5e-5
     # nclasses = 27
     # complexity_weights = []
     # for (m, in_shape) in net.gated_modules:
@@ -140,8 +148,8 @@ if __name__ == "__main__":
 
 
     # gate_control = uniform_gate(0.9)
-    # gate_control = uniform_gate(0.0)
-    gate_control = uniform_gate(0.5)
+    gate_control = uniform_gate(0.0)
+    # gate_control = uniform_gate(0.5)
     # gate_control = constant_gate(1.0)
 
     gate_loss = glearner.usage_gate_loss( penalty_fn)
@@ -151,22 +159,36 @@ if __name__ == "__main__":
 
     ######################### train #######################
     # start = 0
-    train_epochs = 20
+    train_epochs = 10
+    n_utilization_stages = 10
     seed = 1
     eval_after_epoch = False
+    u_stage_l = 0.0
+    u_stage_r = 0.1
+    increment = 0.1
+    # u_stage_l = 0.0 if start == 0 else (start % train_epochs - 1 + 6.) / (train_epochs + 6.)
     for epoch in range(start, start + train_epochs):
-        print("==== Train: Epoch %s: seed=%s", epoch, seed)
+        # u_stage starts from 0.1 up to 1.0
+        # u_stage_r = (epoch + 11.) / (train_epochs + 11.)
+        # u_stage_r = ((epoch - start) + 1.) / (train_epochs + 0)
+        print("==== Train: Epoch %s: u_stage=[%s, %s]", epoch, u_stage_l, u_stage_r)
+        log.info("==== Train: Epoch %s: u_stage=[%s, %s]", epoch, u_stage_l, u_stage_r)
         batch_idx = 0
         nbatches = math.ceil(len(train_data) / batch_size)
         learner.start_train(epoch, seed)
         running_corrects = 0.0
         running_loss = 0.0
+
+        learner.update_gate_control(constant_gate(u_stage_r), u_stage=(u_stage_l, u_stage_r))
+        if (epoch - start + 1) % (train_epochs // 10) == 0: # (train_epochs // 10)
+            u_stage_l = u_stage_r
+            u_stage_r += increment
         for i, data in enumerate(tqdm(train_dataset)):
-            inputs, labels = data
+            inputs, labels, _ = data
             if cuda:
                 inputs = inputs.cuda(device_ids[0])
                 labels = labels.cuda(device_ids[0])
-            # generate intermidiate heatmaps
+
             yhat = learner.forward(i, inputs, labels)
             loss = learner.backward(i, yhat, labels)
             probs = nn.Softmax(dim=1)(yhat)
@@ -174,7 +196,7 @@ if __name__ == "__main__":
             batch_corrects = torch.sum(preds == labels.data).float()
             running_corrects += batch_corrects
             running_loss += loss.float()
-            if i % 500 == 0:
+            if i % 50 == 0:
                 running_num = (i + 1) * batch_size
                 step_loss = running_loss / running_num
                 step_accuracy = running_corrects / running_num

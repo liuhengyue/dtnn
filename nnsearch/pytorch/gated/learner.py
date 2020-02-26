@@ -166,7 +166,8 @@ class GatedDataPathLearner(GatedNetworkLearner):
   strategy for two-phase gated network training.
 
   """
-  def __init__( self, network, optimizer, learning_rate, gate_policy, gate_control, scheduler=None, **kwargs ):
+  def __init__( self, network, optimizer, learning_rate, gate_policy, gate_control,
+                scheduler=None, **kwargs ):
     super().__init__( network, optimizer, learning_rate, gate_policy, gate_control, **kwargs )
     self.scheduler = scheduler
 
@@ -177,8 +178,41 @@ class GatedDataPathLearner(GatedNetworkLearner):
   def scheduler_step(self, loss, epoch):
     self.scheduler.step(loss, epoch)
 
-  def update_gate_control(self, gate_control):
+  def update_gate_control(self, gate_control, u_stage=None):
     self.gate_control = gate_control
+    # give the u_stage, freeze the first c components
+    if u_stage:
+      print("Freeze components")
+      u_stage_l, u_stage_r = u_stage
+      gated_modules = self.network.module._gated_modules \
+        if isinstance(self.network, torch.nn.DataParallel) else self.network._gated_modules
+      for gated_module in gated_modules:
+          # set all to false
+          for component in gated_module[0].components:
+            for p in component.parameters():
+              p.requires_grad = False
+
+      for gated_module in gated_modules:
+          n = len(gated_module[0].components)
+          # set active components to True
+          c_l = int(n * u_stage_l)
+          c_r = int(n * u_stage_r)
+          c_r = min(c_r + 1, n) if c_r == c_l else c_r
+          assert c_r > c_l, "Error: No active components."
+          for i in range(c_l, c_r):
+            for p in gated_module[0].components[i].parameters():
+              p.requires_grad = True
+              # re-init these weights
+              # if (torch.sum(p) == 0).item():
+              #   nn.init.uniform_(p)
+
+      # check the requires grad term
+      # for gated_module in gated_modules:
+      #     print(gated_module)
+      #     for component in gated_module[0].components:
+      #       for p in component.parameters():
+      #         print(p.requires_grad, end=' ')
+
 
     
 # ----------------------------------------------------------------------------

@@ -49,8 +49,8 @@ def model_file(directory, epoch, suffix=""):
     return os.path.join(directory, filename)
 
 
-def latest_checkpoints(directory):
-    return glob.glob(os.path.join(directory, "model_*.pkl.latest"))
+def latest_checkpoints(directory, prefix="model"):
+    return glob.glob(os.path.join(directory, prefix + "_*.pkl.latest"))
 
 def save_model(network, output, elapsed_epochs, force_persist=False):
     if not os.path.exists(output):
@@ -88,6 +88,24 @@ def load_model(self, state_dict, load_gate=True, strict=True):
         return k.startswith("gate.")
 
     own_state = self.state_dict()
+
+    # # remove bn keys
+    # bn_keys = ["fn." + str(i) for i in [5,9,12,16,19,23,26]]
+    # for name, param in state_dict.copy().items():
+    #     for bn_key in bn_keys:
+    #         if bn_key in name:
+    #             del state_dict[name]
+    # # change keys
+    # own_keys = ["fn." + str(i) for i in [7,9,12,14,17,19,22,24,26]] # own dict
+    # saved_keys = ["fn." + str(i) for i in [8, 11, 15, 18, 22, 25, 29, 31, 33]]
+    # map_keys = {"fn." + str(v) : own_keys[i] for i, v in enumerate([8,11,15,18,22,25,29,31,33])}
+
+    # for name, param in state_dict.copy().items():
+    #     for saved_key in saved_keys:
+    #         if saved_key in name:
+    #             state_dict[name.replace(saved_key, map_keys[saved_key])] = state_dict[name]
+    #             del state_dict[name]
+
     for name, param in state_dict.items():
         if name in own_state:
             log.verbose("Load %s", name)
@@ -100,10 +118,13 @@ def load_model(self, state_dict, load_gate=True, strict=True):
             try:
                 own_state[name].copy_(param)
             except Exception:
-                raise RuntimeError('While copying the parameter named {}, '
-                                   'whose dimensions in the model are {} and '
-                                   'whose dimensions in the checkpoint are {}.'
-                                   .format(name, own_state[name].size(), param.size()))
+                if strict:
+                    raise RuntimeError('While copying the parameter named {}, '
+                                       'whose dimensions in the model are {} and '
+                                       'whose dimensions in the checkpoint are {}.'
+                                       .format(name, own_state[name].size(), param.size()))
+                else:
+                    print("skip {}, dimension mismatch: {} in model, {} in checkpoint.".format(name, own_state[name].size(), param.size()))
         elif strict:
             raise KeyError('unexpected key "{}" in state_dict'
                            .format(name))
@@ -114,7 +135,7 @@ def load_model(self, state_dict, load_gate=True, strict=True):
         if len(missing) > 0:
             raise KeyError('missing keys in state_dict: "{}"'.format(missing))
 
-def make_sequentialGate(dict_stages, gate_during_eval=False):
+def make_sequentialGate(dict_stages, gate_during_eval=True):
     gate_modules = []
     for key, block_stages in dict_stages.items():
         if key == "refinement":
@@ -164,10 +185,15 @@ def get_kpts(map_6, img_h = 368.0, img_w = 368.0, t = 0.01):
     return kpts
 
 
-def draw_paint(im, kpts, image_path=None, gt_kpts=None, draw_edges=True, show=False):
+def draw_paint(im, kpts, image_path=None, gt_kpts=None, draw_edges=True, show=False, offsets=None):
     # first need copy the image !!! Or it won't draw.
     im = im.copy()
     # draw points
+    if offsets:
+        for i in range(len(kpts)):
+            if kpts[i][0] > -1 and kpts[i][1] > -1:
+                kpts[i][0] -= offsets[0]
+                kpts[i][1] -= offsets[1]
     for k in kpts:
         x = k[0]
         y = k[1]

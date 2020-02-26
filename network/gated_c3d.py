@@ -105,112 +105,14 @@ def _maybe_expand_tuple(dim, tuple_or_int):
         assert (type(tuple_or_int) is tuple)
     return tuple_or_int
 # --------------------------------------------------------------------------------------
-class GatedChainBranchNetwork(nn.Module):
-    def __init__(self, gate, modules, gated_modules, intermediate=None,
-                 normalize=True, reverse_normalize=False, gbar_info=False):
-        """
-        Parameters:
-        -----------
-          `gate`: Gate policy for whole network
-          `modules`: List of all modules in the network
-          `gated_modules`: List of GatedModules in the network
-          `reverse_normalize`: If `True`, scale gate values *up* so that the sum of
-            the gate vectors is equal to the number of components. If `False`,
-            scale gate values *down* so that the sum is equal to 1.
-          `gbar_info`: Log extra information about the gbar matrices.
-        """
-        super().__init__()
-        self.gate = gate
-        self.fn = nn.ModuleList(modules)
-        self._gated_modules = gated_modules
-        self.normalize = normalize
-        self.reverse_normalize = reverse_normalize
-        self._gbar_info = gbar_info
-        self.intermediate = intermediate
 
-    @property
-    def gated_modules(self):
-        yield from self._gated_modules
 
-    def _normalize(self, g):
-        z = 1e-12 + torch.sum(g, dim=1, keepdim=True)  # Avoid divide-by-zero
-        if self.reverse_normalize:
-            return g * g.size(1) / z
-        else:
-            return g / z
-
-    def _log_gbar(self, gbar):
-        log.debug("network.gbar:\n%s", gbar)
-        if self._gbar_info:
-            N = torch.sum((gbar.data > 0).float(), dim=1, keepdim=True)
-            # log.info( "network.log_gbar.N:\n%s", N )
-            g = N * gbar.data
-            # log.info( "network.log_gbar.g:\n%s", g )
-            h = torchx.histogram(g,
-                                 bins=[0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10])
-            log.info("network.g.hist:\n%s", torchx.pretty_histogram(h))
-
-    def set_gate_control(self, u):
-        self._u = u
-
-    def forward(self, x, u=None):
-        """
-        Returns:
-          `(y, gs)` where:
-            `y`  : Network output
-            `gs` : `[(g, info)]` List of things returned from `self.gate` in same
-              order as `self.gated_modules`. `g` is the actual gate matrix, and
-              `info` is any additional things returned (or `None`).
-        """
-
-        def expand(gout):
-            if isinstance(gout, tuple):
-                g, info = gout  # Fail fast on unexpected extra outputs
-                return (g, info)
-            else:
-                return (gout, None)
-
-        gs = []
-        # FIXME: This is a hack for FasterRCNN integration. Find a better way.
-        if u is None:
-            self.gate.set_control(self._u)
-        else:
-            self.gate.set_control(u)
-        # TODO: With the current architecture, set_control() has to happen before
-        # reset() in case reset() needs to run the gate network. Should `u` be a
-        # second parameter to reset()? Should it be an argument to gate() as well?
-        # How do we support gate networks that require the outputs of arbitrary
-        # layers in the data network in a modular way?
-        self.gate.reset(x)
-        for i, m in enumerate(self.fn):
-            # print(type(m))
-            if isinstance(m, GatedModule):
-                self.gate.next_module(m)
-                g, info = expand(self.gate(x))
-                gs.append((g, info))
-                if self.normalize:
-                    g = self._normalize(g)
-                self._log_gbar(g)
-                # debug: check the gate matrix
-                # print("Layer --------------------\n", m, "\n gate matrix --------------------\n",  g)
-                x = m(x, g)
-            else:
-                x = m(x)
-            if self.intermediate and i == self.intermediate:
-                intermeidate_features = x
-            # print(x.size())
-        log.debug("network.x: %s", x)
-        if self.intermediate:
-            return x, intermeidate_features, gs
-        else:
-            return x, gs
-
-class GatedC3D(GatedChainBranchNetwork):
+class GatedC3D(GatedChainNetwork):
     """ A parameterizable conv 3d architecture.
     """
 
     def __init__(self, gate, in_shape, nclasses, c3d_stages, fc_stages,
-                 intermediate=None, batchnorm=False, dropout=0.5, **kwargs):
+                 batchnorm=True, dropout=0.5, **kwargs):
         # in_shape: (C, D, H, W), D is time/sequence
 
         self.fc_stages = fc_stages
@@ -229,7 +131,7 @@ class GatedC3D(GatedChainBranchNetwork):
         # self.fn = nn.ModuleList( modules )
         # print("modules------------------",modules)
         # print("gated modules------------------", gated_modules)
-        super().__init__(gate, self.tmp_modules, self.tmp_gated_modules, intermediate=intermediate, **kwargs)
+        super().__init__(gate, self.tmp_modules, self.tmp_gated_modules, **kwargs)
 
 
     def __set_c3d_model(self):
@@ -246,8 +148,9 @@ class GatedC3D(GatedChainBranchNetwork):
                     else:
                         self.tmp_modules.append(nn.Conv3d(self.in_channels, stage.nchannels,
                                                           kernel_size=stage.kernel_size, stride=stage.stride, padding=stage.padding))
-                    if self.batchnorm:
+                        # for first layer, add bn and relu
                         self.tmp_modules.append(nn.BatchNorm3d(stage.nchannels))
+                        self.tmp_modules.append(nn.ReLU())
                     self.in_channels = stage.nchannels
                 elif stage.name == "pool":
                     pool, in_shape = Maxpool3dWrapper(self.in_shape, kernel_size=stage.kernel_size, stride=stage.stride)
@@ -282,6 +185,56 @@ class GatedC3D(GatedChainBranchNetwork):
     def __set_classification_layer(self):
         self.tmp_modules.append(FullyConnected(self.in_channels, self.nclasses))
 
+    # rewrite the forward function
+    def forward(self, x, u=None):
+        """
+        Returns:
+          `(y, gs)` where:
+            `y`  : Network output
+            `gs` : `[(g, info)]` List of things returned from `self.gate` in same
+              order as `self.gated_modules`. `g` is the actual gate matrix, and
+              `info` is any additional things returned (or `None`).
+        """
+
+        def expand(gout):
+            if isinstance(gout, tuple):
+                g, info = gout  # Fail fast on unexpected extra outputs
+                return (g, info)
+            else:
+                return (gout, None)
+
+        gs = []
+
+        self.gate.set_control(u)
+        # TODO: With the current architecture, set_control() has to happen before
+        # reset() in case reset() needs to run the gate network. Should `u` be a
+        # second parameter to reset()? Should it be an argument to gate() as well?
+        # How do we support gate networks that require the outputs of arbitrary
+        # layers in the data network in a modular way?
+        self.gate.reset(x)
+        for m in self.fn:
+            # print(type(m))
+            if isinstance(m, GatedModule):
+                self.gate.next_module(m)
+                g, info = expand(self.gate(x))
+                gs.append((g, info))
+                # print(g)
+                if self.normalize:
+                    g = self._normalize(g)
+                self._log_gbar(g)
+                # debug: check the gate matrix
+                # print(g)
+                # for component in m.parameters():
+                #     print(component.requires_grad)
+
+                # print("Layer --------------------\n", m, "\n gate matrix --------------------\n",  g)
+                x = m(x, g)
+            else:
+                x = m(x)
+            # print(x.size())
+        log.debug("network.x: %s", x)
+        return x, gs
+
     def flops(self, in_shape):
         total_macc = 0
         gated_macc = []
@@ -314,16 +267,16 @@ class GatedC3D(GatedChainBranchNetwork):
         print("TOTAL FLOPS", total_macc)
         return (total_macc, gated_macc)
 
-def C3dDataNetwork(in_shape=(3, 16, 368, 368)):
+def C3dDataNetwork(in_shape=(3, 16, 100, 160), num_classes=27, gate_during_eval=True):
     span_factor = 1
 
     c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64 * span_factor, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 1, 128 * span_factor, 8), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 256 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
-                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
+                  GatedStage("conv", 3, 1, 1, 1, 128 * span_factor, 16), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 256 * span_factor, 32), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 32), GatedStage("pool", 2, 2, 0, 1, 0, 0),
+                  GatedStage("conv", 3, 1, 1, 2, 512 * span_factor, 32), GatedStage("pool", 2, 2, 0, 1, 0, 0), ]
 
-    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512 * span_factor, 4)]
+    fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512 * span_factor, 16)]
 
     # non gated
     # c3d_stages = [GatedStage("conv", 3, 1, 1, 1, 64, 1), GatedStage("pool", (1, 2, 2), (1, 2, 2), 0, 1, 0, 0),
@@ -335,15 +288,14 @@ def C3dDataNetwork(in_shape=(3, 16, 368, 368)):
     # fc_stages = [GatedStage("fc", 0, 0, 0, 2, 512, 1)]
 
     stages = {"c3d": c3d_stages, "fc": fc_stages}
-    gate = make_sequentialGate(stages)
+    gate = make_sequentialGate(stages, gate_during_eval=gate_during_eval)
     # in_shape = (21, 16, 45, 45)
     # in_shape = (3, 16, 368, 368) # for raw input
-    num_classes = 5
     c3d_pars = {"c3d": c3d_stages, "fc": fc_stages, "gate": gate,
             "in_shape": in_shape, "num_classes": num_classes}
 
     c3d_net = GatedC3D(c3d_pars["gate"], c3d_pars["in_shape"],
-                       c3d_pars["num_classes"], c3d_pars["c3d"], c3d_pars["fc"], dropout=0)
+                       c3d_pars["num_classes"], c3d_pars["c3d"], c3d_pars["fc"], dropout=0, normalize=False)
 
     return c3d_net
 # ----------------------------------------------------------------------------
@@ -367,14 +319,23 @@ if __name__ == "__main__":
     # order: "name", "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
 
 
-    net = C3dDataNetwork(in_shape=(3,16,368,368)).cuda()
+    net = C3dDataNetwork(in_shape=(3,16,100,160), gate_during_eval=True).cuda()
     net.eval()
-    net.flops((3, 16, 368, 368))
+    net.flops((3, 16, 100, 160))
     # print(net)
 
-    summary(net, [(3, 16, 368, 368), (1,)], device="cuda")
-    x = torch.rand(1, 3, 16, 368, 368)
-    y, intermediate_y, g = net(Variable(x), torch.tensor(0.5))
-    print("intermediate output size: ", intermediate_y.size())
-    print("output size: {}| gate size: {}".format(y.size(), len(g)))
+    # summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
+    x = torch.rand(1, 3, 16, 100, 160).cuda()
+    u = torch.tensor(0.5).cuda()
+
+    y, gs = net(x, u)
+    print("output size: {} \n gate size: {} ".format(y.size(), len(gs)))
+    print("gate matrix: \n {}".format([g[0] for g in gs]))
     y.backward
+    print("BP works.")
+    # u = 0.5
+    # for gated_module in net._gated_modules:
+    #     n = len(gated_module[0].components)
+    #     c = int(n * u)
+    #     for i in range(c):
+    #         gated_module[0].components[i].requires_grad = False

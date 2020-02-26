@@ -101,8 +101,7 @@ class RefinementStage(nn.Module):
 
 
 class CPM_MobileNet(nn.Module):
-    def \
-            __init__(self, num_refinement_stages=1, num_channels=128, num_heatmaps=21, to_onnx=False):
+    def __init__(self, num_refinement_stages=1, num_channels=128, num_heatmaps=21, to_onnx=False):
         super().__init__()
         self.model = nn.Sequential(
             conv(     3,  32, stride=2, padding=0, bias=False),

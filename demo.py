@@ -201,7 +201,7 @@ def start_camera_app(tnn, controller, kpt_net, use_fixed_rule_controller=False,
     while True:
         tmp_canvas = canvas.copy()
         _, oriImg = cam.read()
-        test_img = preprocess_cam_frame(oriImg, 368)
+        test_img, display_img = preprocess_cam_frame(oriImg, 368)  # Add support for different test and display images
         c3d_input = cv2.resize(oriImg, (160, 100))
         # print(c3d_input.shape)
         input = (c3d_input.astype(np.float32) / 255.).transpose((2, 0, 1))
@@ -215,8 +215,8 @@ def start_camera_app(tnn, controller, kpt_net, use_fixed_rule_controller=False,
             kpt_input_tensor = transforms.ToTensor()(kpt_input).unsqueeze_(0)
             if cuda:
                 kpt_input_tensor = kpt_input_tensor.cuda(cuda_device)
-            pred = kpt_net.heatmap_net.forward(kpt_input_tensor)
-            final_stage_heatmaps = pred[0, -1, :, :, :].cpu().numpy()
+            pred = kpt_net.forward(kpt_input_tensor)
+            final_stage_heatmaps = pred[0, -1, :, :, :].cpu().detach().numpy()
             kpts = get_kpts(final_stage_heatmaps, t=0.05)
             draw = draw_paint(test_img, kpts, None)
             draw_image(tmp_canvas, draw)
@@ -250,7 +250,10 @@ def start_camera_app(tnn, controller, kpt_net, use_fixed_rule_controller=False,
             score = scores.detach().cpu().numpy()[0]
             predicted_classes = [label_to_class[idx] for idx in predicted][0]
             u_val = u.item()
-            fixed_controller.add_to_history(predicted_classes)
+
+            if use_fixed_rule_controller:
+                fixed_controller.add_to_history(predicted_classes)
+            
             buffer = []
 
         # draw predictions
@@ -372,7 +375,7 @@ def throttle_demo():
     cuda_device = 0
     use_controller = True
     use_fixed_rule_controller = False
-    camera_on = False
+    camera_on = True
 
     label_to_class = get_class_names()
 
@@ -414,7 +417,7 @@ def throttle_demo():
             controller._us = controller._us.cuda(cuda_device)
 
     if camera_on:
-        start_camera_app(tnn, controller, kpt_net)
+        start_camera_app(tnn, controller, kpt_net, cuda=cuda, run_keypoints=True)
     else:
         frame_folder = r"D:\research\ffmpeg\data\demo_imgs"
         start_video_demo(frame_folder, tnn, controller, kpt_net)

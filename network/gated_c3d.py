@@ -319,14 +319,14 @@ if __name__ == "__main__":
     # order: "name", "kernel_size", "stride", "padding", "nlayers", "nchannels", "ncomponents"
 
 
-    net = C3dDataNetwork(in_shape=(3,16,100,160), gate_during_eval=True).cuda()
+    net = C3dDataNetwork(in_shape=(3,16,100,160), gate_during_eval=True) #.cuda()
     net.eval()
     net.flops((3, 16, 100, 160))
     # print(net)
 
-    # summary(net, [(3, 16, 100, 160), (1,)], device="cuda")
-    x = torch.rand(1, 3, 16, 100, 160).cuda()
-    u = torch.tensor(0.5).cuda()
+    # summary(net, [(3, 16, 100, 160), (1,)], device="cpu")
+    x = torch.rand(1, 3, 16, 100, 160) #.cuda()
+    u = torch.tensor(0.5) #.cuda()
 
     y, gs = net(x, u)
     print("output size: {} \n gate size: {} ".format(y.size(), len(gs)))

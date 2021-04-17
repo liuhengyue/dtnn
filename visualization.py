@@ -16,12 +16,17 @@ import math
 from pandas.api.types import CategoricalDtype
 
 from mizani.palettes import manual_pal
+import matplotlib.font_manager as font_manager
 # sns.set()
 # plt.close("all")
 # matplotlib params
 # print(plt.style.available)
 # plt.style.use('fivethirtyeight')
-rcParams['font.family'] = 'serif'
+# font_dirs = ['/my/custom/font/dir', ]
+font_files = font_manager.findSystemFonts(fontpaths='/System/Library/Fonts/')
+# print([f.name for f in matplotlib.font_manager.fontManager.ttflist])
+rcParams['font.family'] = 'DejaVu Serif'
+# rcParams['font.sans-serif'] = ['DejaVu Sans']
 rcParams['figure.figsize'] = 6, 3
 rcParams['font.size'] = 30
 rcParams['axes.facecolor'] = '#ebebeb'
@@ -315,26 +320,28 @@ def accuracy_u_plot():
     # data = pd.read_table("visualization/cifar10-densenet-indep-utilization.csv", comment="#")
     print(data.columns)
     data = pd.melt(data, id_vars=["u"])
+    # add the naive model
+    # data.append({'u': 1.0, 'variable': "Average Accuracy", 'value': 0.8267}, ignore_index=True)
     print(data)
     print(data.columns)
     xtics = [i / 16 for i in range(0, 17, 4)]
-    palette = ["#41b6c4ff", "#2c7fb8ff", "#253494ff", "#000000ff"]
-    plot = (ggplot(aes(x="u", y="value", color="variable"), data=data)
-            + theme(text=element_text(family="serif", size=16))
+    plot = (ggplot(aes(x="u", y='value', color="variable"), data=data)
+            + theme(text=element_text(family="DejaVu Serif", size=18))
             # + ggtitle("Non-Uniform Resource Allocation")
-            + xlab("Utilization parameter u")
-            + scale_x_continuous(breaks=xtics)
+            + xlab("Utilization u")
+            + scale_x_reverse(breaks=xtics)
+            # + scale_x_continuous(breaks=xtics[::-1])
             # + theme( axis_text_x=element_text(size=6) )
-            + ylab("Prediction accuracy")
+            + ylab("Accuracy")
             + scale_color_discrete(guide=False)
             # + theme(legend_position="right", legend_title=element_text(text=""),
             #         legend_text=element_text(size=4), legend_key_size=4)
             # + guides(color=guide_legend(ncol=1))
             + geom_point()
-            + theme(axis_text_x = element_text(size=10), axis_text_y = element_text(size=10),
-                    strip_text = element_text(size=7))
+            + theme(axis_text_x = element_text(size=16), axis_text_y = element_text(size=16),
+                    strip_text = element_text(size=9.5))
             + annotate("point", x=1.0, y=0.8267)
-            + facet_wrap(['variable'], nrow=5)
+            + facet_wrap(['variable'], nrow=4)
             + geom_line(size=1.5)
             # + scale_size_manual(values=[20])
             # + scale_linetype_manual(values=["dashed"])
@@ -345,11 +352,13 @@ def accuracy_u_plot():
             # + scale_color_manual(name="variable", values=palette)
             )
 
-    plot += annotate("point", x=1.0, y=0.8267, color="black", alpha=0.5)
+    # plot += annotate("point", x=1.0, y=0.8267, color="black", alpha=0.5)
+    # plot += geom_point(aes(x=1.0, y=0.8267), color="black", alpha=0.5)
     # + scale_color_brewer( type="seq", palette="Blues" ))
     plot.draw().show()
     # ggsave( plot, "cifar10-densenet-indep-utilization.pdf", device="pdf", width=5, height=3 )
-    ggsave(plot, "visualization/acc_for_all.{}".format(output_format), width=12, height=8)
+    ggsave(plot, "visualization/acc_for_all.{}".format(output_format), width=20, height=8)
+
 
 def gpu_plot():
     output_format = "pdf"
@@ -476,8 +485,8 @@ if __name__ == "__main__":
     logs = load_logs("logs/eval_raw_c3d_2019-11-07_17-28-30.json")
     results = process_logs(logs)
     # print(results)
-    u_vs_examples_plot(results)
+    # u_vs_examples_plot(results)
     # load_acc_log()
-    # accuracy_u_plot()
+    accuracy_u_plot()
     # gpu_plot()
     # plot_xavier("visualization/xavier-power-results_post", "Throttling Performance -- VGG-D / CIFAR10 \non NVIDIA Jetson AGX Xavier")

@@ -88,6 +88,8 @@ class ContextualBanditNet(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(self.fc_size, 256),
             nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
             nn.Linear(256, 10),
             # nn.ReLU(),
         )
@@ -100,7 +102,7 @@ class ContextualBanditNet(nn.Module):
 
         x = x.view(-1, self.fc_size)
         x = self.fc(x)
-        # x = self.sm(x)
+        x = self.sm(x)
 
         # x = x.view(-1, 5, 10)
         #print("AFTER SOFTMAX:, ", x)
@@ -156,9 +158,14 @@ class ManualController():
 if __name__ == "__main__":
     input_shape = (3, 16, 100, 160)
     input = torch.randn(input_shape)
-    net = ContextualBanditNet().cuda()
+    net = ContextualBanditNet() #.cuda()
     net.eval()
     # print(net)
     from torchsummary import summary
     summary(net, input_shape, device="cuda")
-    print(util.flops(net, (3, 16, 100, 160)))
+    print(util.flops(net, (3, 16, 100, 160)).macc / (1000 ** 3))
+
+    from thop import profile
+    macs, params = profile(net, inputs=(torch.unsqueeze(input, 0),))
+    print("macs: ", macs / (1000 ** 3))
+    print("params: ", params / ((1000 ** 2)))

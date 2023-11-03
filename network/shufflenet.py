@@ -157,18 +157,34 @@ def get_model(**kwargs):
 
 if __name__ == "__main__":
     model = get_model(groups=3, num_classes=10, width_mult=1.0)
-    # model = model.cuda()
+
     # model = nn.DataParallel(model, device_ids=None)
-    print(model)
+    # print(model)
     input_shape = (3, 16, 100, 160)
     input_var = torch.randn(1, 3, 16, 100, 160)
+    if torch.cuda.is_available():
+        model = model.cuda()
+        input_var = input_var.cuda()
     output = model(input_var)
-    print(output.shape)
+    # print(output.shape)
+    #
+    # from torchsummary import summary
+    # summary(model, input_shape, device="cuda")
+    #
+    # from thop import profile
+    # macs, params = profile(model, inputs=(input_var,))
+    # print("macs: ", macs / (1000 ** 3))
+    # print("params: ", params / ((1000 ** 2)))
 
-    from torchsummary import summary
-    summary(model, input_shape, device="cuda")
+    # test run time
+    import torch.utils.benchmark as benchmark
 
-    from thop import profile
-    macs, params = profile(model, inputs=(input_var,))
-    print("macs: ", macs / (1000 ** 3))
-    print("params: ", params / ((1000 ** 2)))
+    def test_model(model, x):
+        return model(x)
+
+    t0 = benchmark.Timer(
+        stmt='test_model(model, input_var)',
+        setup='from __main__ import test_model',
+        globals={'model': model, 'input_var': input_var})
+
+    print(t0.timeit(100))

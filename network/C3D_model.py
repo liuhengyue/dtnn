@@ -154,9 +154,32 @@ def get_10x_lr_params(model):
                 yield k
 
 if __name__ == "__main__":
-    inputs = torch.rand(1, 3, 16, 100, 160).cuda()
-    net = C3D(num_classes=27, pretrained=False).cuda()
-    summary(net, (3, 16, 100, 160))
-    # summary(net, (21, 16, 45, 45))
-    # outputs = net.forward(inputs)
-    # print(outputs.size())
+    x = torch.rand(1, 3, 16, 100, 160)
+    net = C3D(num_classes=27, pretrained=False)
+    if torch.cuda.is_available():
+        net = net.cuda()
+        x = x.cuda()
+
+    from thop import profile
+
+    macs, params = profile(net, inputs=(x, ))
+    print("macs: ", macs / (1000 ** 3))
+    print("params: ", params / ((1000 ** 2)))
+
+    # import torch.utils.benchmark as benchmark
+    #
+    # def test_model(model, x):
+    #     return model(x)
+    #
+    # t0 = benchmark.Timer(
+    #     stmt='test_model(model, input_var)',
+    #     setup='from __main__ import test_model',
+    #     globals={'model': net, 'input_var': x})
+    #
+    # print(t0.timeit(100))
+
+    import torch.autograd.profiler as profiler
+    with profiler.profile(record_shapes=True, use_cuda=True, with_flops=True) as prof:
+        with profiler.record_function("model_inference"):
+            net(x)
+    print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))

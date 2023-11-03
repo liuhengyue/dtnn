@@ -326,16 +326,37 @@ if __name__ == "__main__":
 
     # summary(net, [(3, 16, 100, 160), (1,)], device="cpu")
     x = torch.rand(1, 3, 16, 100, 160) #.cuda()
-    u = torch.tensor(0.5) #.cuda()
+    u = torch.tensor(1.0) #.cuda()
+    if torch.cuda.is_available():
+        net = net.cuda()
+        x = x.cuda()
+        u = u.cuda()
 
-    y, gs = net(x, u)
-    print("output size: {} \n gate size: {} ".format(y.size(), len(gs)))
-    print("gate matrix: \n {}".format([g[0] for g in gs]))
-    y.backward
-    print("BP works.")
-    # u = 0.5
-    # for gated_module in net._gated_modules:
-    #     n = len(gated_module[0].components)
-    #     c = int(n * u)
-    #     for i in range(c):
-    #         gated_module[0].components[i].requires_grad = False
+    # y, gs = net(x, u)
+    # print("output size: {} \n gate size: {} ".format(y.size(), len(gs)))
+    # print("gate matrix: \n {}".format([g[0] for g in gs]))
+    # y.backward
+    # print("BP works.")
+
+    from thop import profile
+    macs, params = profile(net, inputs=(x, u))
+    print("macs: ", macs / (1000 ** 3))
+    print("params: ", params / ((1000 ** 2)))
+
+    # benchmark time
+    # import torch.utils.benchmark as benchmark
+    # def test_model(model, x, u):
+    #     return model(x, u)
+    # t0 = benchmark.Timer(
+    #     stmt='test_model(model, x, u)',
+    #     setup='from __main__ import test_model',
+    #     globals={'model': net, 'x': x, 'u': u})
+    #
+    # print(t0.timeit(1000))
+
+    # profiler
+    import torch.autograd.profiler as profiler
+    with profiler.profile(record_shapes=True, use_cuda=True, with_flops=True) as prof:
+        with profiler.record_function("model_inference"):
+            net(x, u)
+    print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))

@@ -1,12 +1,10 @@
-# throttling-demo
+# Dynamically Throttleable Neural Networks
 
-Latent AI throttle network demo.
-
-The demo is an end-to-end trainable throttleable neural network for dynamic hand gesture recognition. It consists of three main conponents: gated 3D Convolutional Neural Networks (C3D) data network for gesture recognition of five classes [Swiping left/right/up/down, no gesture], a small controller network providing utilization parameter for the data network, and single-hand keypoint estimation network as a add-on module. The demo also has a simple OpenCV visualization.
+This codebase contains code for the paper "[Dynamically Throttleable Neural Networks](https://hengyueliu.com/assets/files/Dynamically_throttleable_neural_networks.pdf)" published on "Machine Vision and Applications", 2022.
 
 
 ## Usage
-Download the pretrained weights from [latentai > sample-models > demo branch](https://gitlab.com/latentai/sample-models/tree/demo/demo). 
+Download the pretrained weights in release.
 
 Put `controller_network_2.pkl.latest` inside folder  `ckpt/controller`. 
 
@@ -25,8 +23,6 @@ The concepts and implementations take from this paper [Toward Runtime-Throttleab
 ## Gesture Recognition
 
 Gesture recognition framework is based on a basic [C3D](https://arxiv.org/abs/1412.0767) network with gated version implemented. Some implementations are from [here](https://github.com/jfzhang95/pytorch-video-recognition). Only five gesture classes are used.
-
-The detailed structure is listed here: (todo)
 
 ## Hand Keypoint Estimation
 
@@ -78,8 +74,22 @@ The dataset for training the gesture recognition model is from [20BN-jester V1](
 
 ## Demo
 
-![](demo.gif)*Demo application interface (take a little time to load)*
+Demo from Latent AI [link](https://player.vimeo.com/video/432628321?h=dd1eb87f23).
 
+## Citations
 
+If you find our work helpful, please cite:
+```bibtex
+@article{liu2022dynamically,
+  title={Dynamically throttleable neural networks},
+  author={Liu, Hengyue and Parajuli, Samyak and Hostetler, Jesse and Chai, Sek and Bhanu, Bir},
+  journal={Machine Vision and Applications},
+  volume={33},
+  number={4},
+  pages={59},
+  year={2022},
+  publisher={Springer}
+}
+```
 
 
